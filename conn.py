@@ -80,14 +80,24 @@ class HBIC:
             wire = None
 
         loop = asyncio.get_running_loop()
+        init_coro = None
 
         def ProtocolFactory():
+            nonlocal init_coro
+
             po = PostingEnd()
             if self.ctx is None:  # posting only
                 ho = None
             else:
                 ho = HostingEnd(po, self.app_queue_size)
                 ho.ctx = self.ctx
+
+                init_magic = ho.ctx.get("__hbi_init__", None)
+                if init_magic is not None:
+                    maybe_coro = init_magic(po, ho)
+                    if inspect.iscoroutine(maybe_coro):
+                        init_coro = maybe_coro
+
             return SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
 
         if isinstance(self.addr, (str, bytes)):
@@ -104,6 +114,9 @@ class HBIC:
                 **self.net_opts,
             )
         self._wire = wire
+
+        if init_coro is not None:
+            await init_coro
 
         return wire
 
@@ -174,7 +187,15 @@ class HBIS:
             po = PostingEnd()
             ho = HostingEnd(po, self.app_queue_size)
             ho.ctx = self.context_factory(po=po, ho=ho)
-            return SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
+            wire = SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
+
+            init_magic = ho.ctx.get("__hbi_init__", None)
+            if init_magic is not None:
+                maybe_coro = init_magic(po, ho)
+                if inspect.iscoroutine(maybe_coro):
+                    loop.create_task(maybe_coro)
+
+            return wire
 
         if isinstance(self.addr, (str, bytes)):
             # UNIX domain socket

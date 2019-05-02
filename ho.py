@@ -23,7 +23,7 @@ class HostingEnd:
         "po",
         "_wire",
         "net_ident",
-        "_ctx",
+        "ctx",
         "_conn_fut",
         "_disc_fut",
         "_hoth",
@@ -39,7 +39,7 @@ class HostingEnd:
         self._wire = None
         self.net_ident = "<unwired>"
 
-        self._ctx = None
+        self.ctx = None
 
         self._conn_fut = asyncio.get_running_loop().create_future()
         self._disc_fut = None
@@ -56,17 +56,6 @@ class HostingEnd:
 
         # current hosting conversation
         self.co = None
-
-    @property
-    def ctx(self):
-        return self._ctx
-
-    @ctx.setter
-    def ctx(self, ctx):
-        init_magic = ctx.get("__hbi_init__", None)
-        if init_magic is not None:
-            init_magic(self.po, self)
-        self._ctx = ctx
 
     async def connected(self):
         await self._conn_fut
@@ -279,7 +268,11 @@ HBI {self.net_ident} disconnecting due to error:
         ), "landing new packet while last not finished running ?!"
         assert not self._hotr.is_set(), "hotr set on landing new packet ?!"
 
-        if "co_begin" == wire_dir:
+        if "" == wire_dir:
+
+            self._land_code(code)
+
+        elif "co_begin" == wire_dir:
 
             self._hott = self._ack_co_begin(code)
             self._hotr.set()
@@ -353,7 +346,7 @@ HBI {self.net_info}, error custom landing code:
         defs = {}
         try:
 
-            landed = run_in_context(code, self.context, defs)
+            landed = run_in_context(code, self.ctx, defs)
             return landed
 
         except Exception as exc:
