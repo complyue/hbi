@@ -39,6 +39,15 @@ class PostingEnd:
         self._send_ctrl = SendCtrl()
         self._coq = deque()
 
+    @property
+    def _connected_wire(self):
+        wire = self._wire
+        if wire is None:
+            raise asyncio.InvalidStateError("HBI posting endpoint not wired!")
+        if not wire.connected:
+            raise asyncio.InvalidStateError("HBI posting endpoint not connected!")
+        return wire
+
     def is_connected(self):
         wire = self._wire
         if wire is None:
@@ -50,15 +59,6 @@ class PostingEnd:
     async def wait_connected(self):
         await self._conn_fut
 
-    @property
-    def connected_wire(self):
-        wire = self._wire
-        if wire is None:
-            raise asyncio.InvalidStateError("HBI posting endpoint not wired!")
-        if not wire.connected():
-            raise asyncio.InvalidStateError("HBI posting endpoint not connected!")
-        return wire
-
     async def notif(self, code):
         async with self.co():
             await self._send_code(code)
@@ -66,8 +66,7 @@ class PostingEnd:
     async def notif_data(self, code, bufs):
         async with self.co():
             await self._send_code(code)
-            if bufs is not None:
-                await self._send_data(bufs)
+            await self._send_data(bufs)
 
     def co(self):
         co = PoCo(self)
@@ -126,13 +125,13 @@ class PostingEnd:
             payload = json.dumps(code).encode("utf-8")
 
         # check connected & wait for flowing for each code packet
-        wire = self.connected_wire()
+        wire = self._connected_wire
         await self._send_ctrl.flowing()
         wire.transport.writelines([b"[%d#%s]" % (len(payload), wire_dir), payload])
 
     async def _send_buffer(self, buf):
         # check connected & wait for flowing for each single buffer
-        wire = self.connected_wire()
+        wire = self._connected_wire
         await self._send_ctrl.flowing()
         wire.transport.write(buf)
 

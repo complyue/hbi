@@ -128,9 +128,7 @@ class PoCo(Conver):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        po = self.po
-        if po._wire.connected:
-            await self.end()
+        await self.end()
 
     async def begin(self):
         if self._begin_acked_fut is not None:
@@ -151,6 +149,8 @@ class PoCo(Conver):
         try:
             await po._send_text(self.coid, b"co_begin")
         except Exception as exc:
+            self._begin_acked_fut.set_exception(exc)
+
             err_msg = "Error sending co_begin: " + str(exc)
             err_stack = "".join(traceback.format_exc())
             err_reason = err_msg + "\n" + err_stack
@@ -158,26 +158,41 @@ class PoCo(Conver):
             raise
 
     async def end(self):
-        if self._begin_acked_fut is None:
-            raise asyncio.InvalidStateError("co_begin not sent yet!")
-        if self._end_acked_fut is not None:
-            raise asyncio.InvalidStateError("co_end sent already!")
-
-        po = self.po
-        assert self is po._coq[-1], "co not tail of po's coq ?!"
-
-        self._send_done_fut.set_result(self.coid)
-
-        self._end_acked_fut = asyncio.get_running_loop().create_future()
-
         try:
-            await po._send_text(self.coid, b"co_end")
-        except Exception as exc:
-            err_msg = "Error sending co_end: " + str(exc)
-            err_stack = "".join(traceback.format_exc())
-            err_reason = err_msg + "\n" + err_stack
-            po.disconnect(err_reason)
-            raise
+            if self._begin_acked_fut is None:
+                raise asyncio.InvalidStateError("co_begin not sent yet!")
+            if self._end_acked_fut is not None:
+                raise asyncio.InvalidStateError("co_end sent already!")
+
+            po = self.po
+            assert self is po._coq[-1], "co not tail of po's coq ?!"
+
+            self._end_acked_fut = asyncio.get_running_loop().create_future()
+
+            if not po.is_connected():
+                exc = RuntimeError("Co End After Disconnected")
+                self._end_acked_fut.set_exception(exc)
+                self._send_done_fut.set_exception(exc)
+                raise exc
+
+            try:
+                await po._send_text(self.coid, b"co_end")
+
+                self._send_done_fut.set_result(self.coid)
+            except Exception as exc:
+                self._end_acked_fut.set_exception(exc)
+
+                if not self._send_done_fut.done():
+                    self._send_done_fut.set_exception(exc)
+
+                err_msg = "Error sending co_end: " + str(exc)
+                err_stack = "".join(traceback.format_exc())
+                err_reason = err_msg + "\n" + err_stack
+                po.disconnect(err_reason)
+                raise
+        finally:
+            if not self._send_done_fut.done():
+                self._send_done_fut.set_exception(RuntimeError("Abnormal Co End"))
 
     def is_ended(self):
         return self._send_done_fut.done()
