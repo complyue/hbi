@@ -18,11 +18,20 @@ class PostingEnd:
 
     """
 
-    __slots__ = ("_wire", "net_ident", "_conn_fut", "_disc_fut", "_send_ctrl", "_coq")
+    __slots__ = (
+        "_wire",
+        "net_ident",
+        "remote_addr",
+        "_conn_fut",
+        "_disc_fut",
+        "_send_ctrl",
+        "_coq",
+    )
 
     def __init__(self):
         self._wire = None
         self.net_ident = "<unwired>"
+        self.remote_addr = "<unwired>"
 
         self._conn_fut = asyncio.get_running_loop().create_future()
         self._disc_fut = None
@@ -212,8 +221,10 @@ HBI {self.net_ident} disconnecting due to error:
         await disc_fut
 
     # should be called by wire protocol
-    def _connected(self, net_ident):
-        self.net_ident = net_ident
+    def _connected(self):
+        wire = self.wire
+        self.net_ident = wire.net_ident
+        self.remote_addr = wire.remote_addr
 
         self._send_ctrl.startup()
 

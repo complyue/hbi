@@ -58,17 +58,16 @@ class SocketWire(asyncio.Protocol):
 
     def connection_made(self, transport):
         self.transport = transport
-        net_ident = self.net_ident
 
         po = self.po
         if po is not None:
             assert po._wire is self, "wire mismatch ?!"
-            po._connected(net_ident)
+            po._connected()
 
         ho = self.ho
         if ho is not None:
             assert ho._wire is self, "wire mismatch ?!"
-            ho._connected(net_ident)
+            ho._connected()
 
     def data_received(self, chunk):
         ho = self.ho
@@ -133,6 +132,19 @@ class SocketWire(asyncio.Protocol):
             return f"<HBI bogon wire: {exc!s}>"
 
     @property
+    def remote_addr(self):
+        transport = self.transport
+        if transport is None:
+            raise asyncio.InvalidStateError("Socket not wired!")
+
+        peername = transport.get_extra_info("peername")
+        if len(peername) in (2, 4):
+            return ":".join(peername)
+        raise NotImplementedError(
+            "Socket transport other than tcp4/tcp6 not supported yet."
+        )
+
+    @property
     def remote_host(self):
         transport = self.transport
         if transport is None:
@@ -167,6 +179,19 @@ class SocketWire(asyncio.Protocol):
         sockname = transport.get_extra_info("sockname")
         if len(sockname) in (2, 4):
             return sockname[0]
+        raise NotImplementedError(
+            "Socket transport other than tcp4/tcp6 not supported yet."
+        )
+
+    @property
+    def local_addr(self):
+        transport = self.transport
+        if transport is None:
+            raise asyncio.InvalidStateError("Socket not wired!")
+
+        sockname = transport.get_extra_info("sockname")
+        if len(sockname) in (2, 4):
+            return ":".join(sockname)
         raise NotImplementedError(
             "Socket transport other than tcp4/tcp6 not supported yet."
         )

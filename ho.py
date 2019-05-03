@@ -23,6 +23,7 @@ class HostingEnd:
         "po",
         "_wire",
         "net_ident",
+        "local_addr",
         "ctx",
         "open_ctx",
         "_conn_fut",
@@ -42,6 +43,7 @@ class HostingEnd:
 
         self._wire = None
         self.net_ident = "<unwired>"
+        self.local_addr = "<unwired>"
 
         self._conn_fut = asyncio.get_running_loop().create_future()
         self._disc_fut = None
@@ -143,8 +145,10 @@ HBI {self.net_ident} disconnecting due to error:
         await disc_fut
 
     # should be called by wire protocol
-    def _connected(self, net_ident):
-        self.net_ident = net_ident
+    def _connected(self):
+        wire = self.wire
+        self.net_ident = wire.net_ident
+        self.local_addr = wire.local_addr
 
         conn_fut = self._conn_fut
         assert conn_fut is not None, "?!"
