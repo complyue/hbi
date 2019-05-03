@@ -60,7 +60,7 @@ class HBIC:
     async def __aenter__(self):
         wire = await self.connect()
 
-        return wire.po
+        return wire.po, wire.ho
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
