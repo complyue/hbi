@@ -24,6 +24,7 @@ class HostingEnd:
         "_wire",
         "net_ident",
         "ctx",
+        "open_ctx",
         "_conn_fut",
         "_disc_fut",
         "_hoth",
@@ -33,13 +34,14 @@ class HostingEnd:
         "co",
     )
 
-    def __init__(self, po, app_queue_size: int = 100):
+    def __init__(self, po, open_ctx=True, app_queue_size: int = 100):
         self.po = po
+        self.open_ctx = open_ctx
+
+        self.ctx = None
 
         self._wire = None
         self.net_ident = "<unwired>"
-
-        self.ctx = None
 
         self._conn_fut = asyncio.get_running_loop().create_future()
         self._disc_fut = None
@@ -57,7 +59,15 @@ class HostingEnd:
         # current hosting conversation
         self.co = None
 
-    async def connected(self):
+    def is_connected(self):
+        wire = self._wire
+        if wire is None:
+            return False
+        if self._disc_fut is not None:
+            return False
+        return wire.connected
+
+    async def wait_connected(self):
         await self._conn_fut
 
     async def _recv_obj(self):
@@ -343,20 +353,18 @@ HBI {self.net_info}, error custom landing code:
                 raise
 
         # standard landing
-        defs = {}
+        defs = self.ctx if self.open_ctx else {}
         try:
 
             landed = run_in_context(code, self.ctx, defs)
             return landed
 
         except Exception as exc:
-            logger.debug(
+            logger.error(
                 rf"""
 HBI {self.net_ident}, error landing code:
 --CODE--
 {code!s}
---DEFS--
-{defs!r}
 --====--
 """,
                 exc_info=True,

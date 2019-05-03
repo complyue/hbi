@@ -30,6 +30,17 @@ class PostingEnd:
         self._send_ctrl = SendCtrl()
         self._coq = deque()
 
+    def is_connected(self):
+        wire = self._wire
+        if wire is None:
+            return False
+        if self._disc_fut is not None:
+            return False
+        return wire.connected
+
+    async def wait_connected(self):
+        await self._conn_fut
+
     @property
     def connected_wire(self):
         wire = self._wire
@@ -38,9 +49,6 @@ class PostingEnd:
         if not wire.connected():
             raise asyncio.InvalidStateError("HBI posting endpoint not connected!")
         return wire
-
-    async def connected(self):
-        await self._conn_fut
 
     async def notif(self, code):
         async with self.co():
@@ -120,7 +128,7 @@ class PostingEnd:
         wire.transport.write(buf)
 
     async def disconnect(self, err_reason=None, try_send_peer_err=True):
-        wire = self._wir
+        wire = self._wire
         if wire is None:
             raise asyncio.InvalidStateError(
                 f"HBI {self.net_ident} posting endpoint not wired yet!"
