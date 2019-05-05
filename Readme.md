@@ -133,7 +133,7 @@ async def work_out(reconnect_wait=10):
     while job is not None or has_more_jobs():
         hbic = hbi.HBIC(service_addr, react_context)  # define the service connection
         try:
-            # connect the service, get the posting endpoint
+            # connect the service, get the posting/hosting endpoints
             async with hbic as po, ho:  # auto close hbic as a context manager
                 while job is not None or has_more_jobs():
                     if job is None:
