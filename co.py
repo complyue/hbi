@@ -39,7 +39,7 @@ class Conver:
     def is_ended(self):
         raise NotImplementedError
 
-    async def wait_ended():
+    async def wait_ended(self):
         await self._send_done_fut
 
 
@@ -101,7 +101,7 @@ class HoCo(Conver):
     def is_ended(self):
         return self._send_done_fut.done()
 
-    async def wait_ended():
+    async def wait_ended(self):
         await self._send_done_fut
 
 
@@ -189,7 +189,7 @@ class PoCo(Conver):
                 err_msg = "Error sending co_end: " + str(exc)
                 err_stack = "".join(traceback.format_exc())
                 err_reason = err_msg + "\n" + err_stack
-                po.disconnect(err_reason)
+                await po.disconnect(err_reason)
                 raise
         finally:
             if not self._send_done_fut.done():
@@ -198,7 +198,7 @@ class PoCo(Conver):
     def is_ended(self):
         return self._send_done_fut.done()
 
-    async def wait_ended():
+    async def wait_ended(self):
         await self._send_done_fut
 
     def _begin_acked(self, coid):

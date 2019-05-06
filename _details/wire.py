@@ -249,7 +249,7 @@ class SocketWire(asyncio.Protocol):
         elif buffered_amount <= self.wire_buf_low:
             self.transport.resume_reading()
 
-        self.ho._hotr.set()
+        self.ho._landing.set()
 
     def _check_pause(self):
         # pause reading wrt lwm, when app queue is full
@@ -270,34 +270,42 @@ class SocketWire(asyncio.Protocol):
     def _land_one(self) -> bool:
         while True:
             if self._recv_buffer.nbytes <= 0:
-                return False  # no single full packet can be read from buffer
+                # no single full packet can be read from buffer
+
+                # make sure back pressure is released
+                self.transport.resume_reading()
+
+                # suspending further landing until new data arrived
+                self.ho._landing.clear()
+
+                return False
 
             chunk = self._recv_buffer.popleft()
             if not chunk:  # ignore empty buf in the buffer queue
                 continue
 
             while True:
-                if _www_._bdy_buf is None:
+                if self._bdy_buf is None:
                     # packet header not fully received yet
                     pe_pos = chunk.find(b"]")
                     if pe_pos < 0:
                         # still not enough for packet header
-                        if len(chunk) + _www_._hdr_got >= PACK_HEADER_MAX:
+                        if len(chunk) + self._hdr_got >= PACK_HEADER_MAX:
                             raise RuntimeError(
-                                f"No packet header within first {len(chunk) + _www_._hdr_got} bytes."
+                                f"No packet header within first {len(chunk) + self._hdr_got} bytes."
                             )
-                        hdr_got = _www_._hdr_got + len(chunk)
-                        _www_._hdr_buf[_www_._hdr_got : hdr_got] = chunk.data()
-                        _www_._hdr_got = hdr_got
+                        hdr_got = self._hdr_got + len(chunk)
+                        self._hdr_buf[self._hdr_got : hdr_got] = chunk.data()
+                        self._hdr_got = hdr_got
                         break  # proceed to next chunk in buffer
-                    hdr_got = _www_._hdr_got + pe_pos
-                    _www_._hdr_buf[_www_._hdr_got : hdr_got] = chunk.data(0, pe_pos)
-                    _www_._hdr_got = hdr_got
+                    hdr_got = self._hdr_got + pe_pos
+                    self._hdr_buf[self._hdr_got : hdr_got] = chunk.data(0, pe_pos)
+                    self._hdr_got = hdr_got
                     chunk.consume(pe_pos + 1)
-                    header_pl = _www_._hdr_buf[: _www_._hdr_got]
+                    header_pl = self._hdr_buf[: self._hdr_got]
                     if not header_pl.startswith(b"["):
                         rpt_len = len(header_pl)
-                        rpt_hdr = header_pl[: min(_www_._hdr_got, 30)]
+                        rpt_hdr = header_pl[: min(self._hdr_got, 30)]
                         rpt_net = self.net_ident
                         raise RuntimeError(
                             f"Invalid packet start in header: len: {rpt_len}, peer: {rpt_net}, head: [{rpt_hdr}]"
@@ -306,31 +314,31 @@ class SocketWire(asyncio.Protocol):
                     if ple_pos <= 0:
                         raise RuntimeError(f"No packet length in header: [{header_pl}]")
                     pack_len = int(header_pl[1:ple_pos])
-                    _www_._wire_dir = header_pl[ple_pos + 1 :].decode("utf-8")
-                    _www_._hdr_got = 0
-                    _www_._bdy_buf = bytearray(pack_len)
-                    _www_._bdy_got = 0
+                    self._wire_dir = header_pl[ple_pos + 1 :].decode("utf-8")
+                    self._hdr_got = 0
+                    self._bdy_buf = bytearray(pack_len)
+                    self._bdy_got = 0
                 else:
                     # packet body not fully received yet
-                    needs = len(_www_._bdy_buf) - _www_._bdy_got
+                    needs = len(self._bdy_buf) - self._bdy_got
                     if len(chunk) < needs:
                         # still not enough for packet body
-                        bdy_got = _www_._bdy_got + len(chunk)
-                        _www_._bdy_buf[_www_._bdy_got : bdy_got] = chunk.data()
-                        _www_._bdy_got = bdy_got
+                        bdy_got = self._bdy_got + len(chunk)
+                        self._bdy_buf[self._bdy_got : bdy_got] = chunk.data()
+                        self._bdy_got = bdy_got
                         break  # proceed to next chunk in buffer
                     # body can be filled now
-                    _www_._bdy_buf[_www_._bdy_got :] = chunk.data(0, needs)
+                    self._bdy_buf[self._bdy_got :] = chunk.data(0, needs)
                     if (
                         len(chunk) > needs
                     ):  # the other case is equal, means exactly consumed
                         # put back extra data to buffer
                         self._recv_buffer.appendleft(chunk.consume(needs))
-                    payload = _www_._bdy_buf.decode("utf-8")
-                    _www_._bdy_buf = None
-                    _www_._bdy_got = 0
-                    wire_dir = _www_._wire_dir
-                    _www_._wire_dir = None
+                    payload = self._bdy_buf.decode("utf-8")
+                    self._bdy_buf = None
+                    self._bdy_got = 0
+                    wire_dir = self._wire_dir
+                    self._wire_dir = None
 
                     self.ho._land_packet(payload, wire_dir)
                     return True

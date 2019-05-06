@@ -29,7 +29,7 @@ class HostingEnd:
         "_conn_fut",
         "_disc_fut",
         "_hoth",
-        "_hotr",
+        "_landing",
         "_hott",
         "_horq",
         "co",
@@ -50,9 +50,9 @@ class HostingEnd:
 
         # hosting green-thread
         self._hoth = None
-        # the event indicating a hosting task is running
-        self._hotr = asyncio.Event()
-        # the hosting task that is currently running
+        # the event indicating landing should keep proceding
+        self._landing = asyncio.Event()
+        # the hosting task that is scheduled to run
         self._hott = None
 
         # queue for received objects
@@ -73,8 +73,20 @@ class HostingEnd:
         await self._conn_fut
 
     async def _recv_obj(self):
-        self._wire._check_resume()
-        return await self._horq.get()
+        landing = self._landing
+        wire = self._wire
+        horq = self._horq
+        while True:
+
+            try:
+                # try return from receiving queue
+                return horq.get_nowait()
+            except asyncio.QueueEmpty:
+                # no object in queue, proceed to land one packet
+                pass
+            while not wire._land_one():
+                # no complete packet on wire atm, wait more data to arrive
+                await landing
 
     async def disconnect(self, err_reason=None, try_send_peer_err=True):
         _wire = self._wire
@@ -158,6 +170,7 @@ HBI {self.net_ident} disconnecting due to error:
             conn_fut.set_result(None)
 
         assert self._hoth is None, "hosting green-thread created already ?!"
+        self._landing.set()
         self._hoth = asyncio.create_task(self._ho_thread())
 
     async def _ho_thread(self):
@@ -169,52 +182,53 @@ HBI {self.net_ident} disconnecting due to error:
 
         """
 
-        hotr = self._hotr
+        landing = self._landing
         wire = self._wire
         while True:
             try:
-                await hotr.wait()
+                await landing.wait()
             except asyncio.CancelledError:
-                assert (
-                    self._disc_fut is not None
-                ), "hosting thread cancelled while not disconnecting ?!"
+                if self._disc_fut is None:
+                    logger.warning(
+                        "hosting thread cancelled while not disconnecting ?!"
+                    )
                 break
 
-            while wire._land_one():  # consume as much from wire buffer
+            if not wire._land_one():
+                assert (
+                    not landing.is_set()
+                ), "`landing` not cleared upon no packet landed ?!"
+                # no full packet from wire, wait for more data to arrive
+                continue
 
-                coro = self._hott
-                if coro is None:  # no coroutine to run from last packet landing
-                    continue  # proceed to land next packet
-                self._hott = None
+            coro = self._hott
+            if coro is None:  # no coroutine to run from last packet landing
+                # proceed to land next packet
+                continue
+            # the coroutine is taken off to local var `coro`, clear the member field
+            self._hott = None
 
-                try:
+            try:
 
-                    await coro  # run the coroutine by awaiting it
+                await coro  # run the coroutine by awaiting it
 
-                except asyncio.CancelledError:
-                    if self._disc_fut is not None:
-                        # disconnecting, stop hosting thread
-                        break
+            except asyncio.CancelledError:
+                if self._disc_fut is not None:
+                    # disconnecting, stop hosting thread
+                    break
 
-                    logger.warning(
-                        f"HBI {self.net_ident!s} a hosted task cancelled: {coro}",
-                        exc_info=True,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        f"HBI {self.net_ident!s} a hosted task failed: {coro}",
-                        exc_info=True,
-                    )
-                    self.disconnect(exc)
-                    # self._hoth task (which is running this function) should have been cancelled,
-                    # as part of the disconnection, next await on hotr should get CancelledError,
-                    # then return out.
-
-                    # todo: opt to return immediately here ?
-                    # return
-
-            # no more packet to land atm, wait for new data arrival
-            hotr.clear()
+                logger.warning(
+                    f"HBI {self.net_ident!s} a hosted task cancelled: {coro}",
+                    exc_info=True,
+                )
+            except Exception as exc:
+                logger.error(
+                    f"HBI {self.net_ident!s} a hosted task failed: {coro}",
+                    exc_info=True,
+                )
+                # discard all following data on the wire
+                await self.disconnect(exc)
+                return
 
     async def _ack_co_begin(self, coid: str):
         if self.co is not None:
@@ -277,48 +291,46 @@ HBI {self.net_ident} disconnecting due to error:
         await self._horq.put(obj)
 
     def _land_packet(self, code, wire_dir) -> Optional[tuple]:
-        assert (
-            self._hott is None
-        ), "landing new packet while last not finished running ?!"
-        assert not self._hotr.is_set(), "hotr set on landing new packet ?!"
+        assert self._hott is None, "landing new packet while next ho task scheduled ?!"
+        assert self._landing.is_set(), "_landing not set on landing new packet ?!"
 
         if "" == wire_dir:
 
-            self._land_code(code)
+            landed = self._land_code(code)
+            if inspect.iscoroutine(landed):
+                self._hott = landed
+            elif inspect.isawaitable(landed):
+                logger.warning(
+                    f"Possible bug: landed object type=[{type(landed)!s}], being awaitable but not a coroutine: {landed!r}"
+                )
 
         elif "co_begin" == wire_dir:
 
             self._hott = self._ack_co_begin(code)
-            self._hotr.set()
 
         elif "co_recv" == wire_dir:
             # peer is sending a result object to be received by this end
 
             landed = self._land_code(code)
             self._hott = self._co_recv_landed(landed)
-            self._hotr.set()
 
         elif "co_send" == wire_dir:
             # peer is requesting this end to send landed result back
 
             landed = self._land_code(code)
             self._hott = self._co_send_back(landed)
-            self._hotr.set()
 
         elif "co_end" == wire_dir:
 
             self._hott = self._ack_co_end(code)
-            self._hotr.set()
 
         elif "co_ack_begin" == wire_dir:
 
             self._hott = self._co_begin_acked(code)
-            self._hotr.set()
 
         elif "co_ack_end" == wire_dir:
 
             self._hott = self._co_end_acked(code)
-            self._hotr.set()
 
         elif "err" == wire_dir:
             # peer error
@@ -377,7 +389,8 @@ HBI {self.net_ident}, error landing code:
             raise
 
     async def _recv_data(self, bufs):
-        self._wire._check_resume()
+        wire = self._wire
+        wire._check_resume()
 
         fut = asyncio.get_running_loop().create_future()
 
@@ -404,7 +417,7 @@ HBI {self.net_ident}, error landing code:
             if chunk is None:
                 if not fut.done():
                     fut.set_exception(RuntimeError("HBI disconnected"))
-                self._wire._end_offload(None, data_sink)
+                wire._end_offload(None, data_sink)
 
             try:
                 while True:
@@ -414,7 +427,7 @@ HBI {self.net_ident}, error landing code:
                         if not chunk or len(chunk) <= 0:
                             # data expected by buf, and none passed in to this call,
                             # return and expect next call into here
-                            self._resume_recv()
+                            wire.transport.resume_reading()
                             return
                         available = len(chunk)
                         needs = len(buf) - pos
@@ -425,7 +438,7 @@ HBI {self.net_ident}, error landing code:
                             pos = new_pos
                             # all data in this chunk has been exhausted while current buffer not filled yet
                             # return now and expect succeeding data chunks to come later
-                            self._resume_recv()
+                            wire.transport.resume_reading()
                             return
                         # got enough or more data in this chunk to filling current buf
                         buf[pos:] = chunk.data(0, needs)
@@ -445,7 +458,7 @@ HBI {self.net_ident}, error landing code:
                             buf = None
                     except StopIteration as ret:
                         # all buffers in hierarchy filled, finish receiving
-                        self._wire._end_offload(chunk, data_sink)
+                        wire._end_offload(chunk, data_sink)
                         # resolve the future
                         if not fut.done():
                             fut.set_result(bufs)
@@ -460,7 +473,7 @@ HBI {self.net_ident}, error landing code:
                 if not fut.done():
                     fut.set_exception(exc)
 
-        self._wire._begin_offload(data_sink)
+        wire._begin_offload(data_sink)
 
         return await fut
 
@@ -470,7 +483,8 @@ HBI {self.net_ident}, error landing code:
             exc = asyncio.InvalidStateError(
                 "Premature peer EOF before hosting conversation ended."
             )
-            self.disconnect(exc)  # trigger disconnection
+            # trigger disconnection
+            asyncio.create_task(self.disconnect(exc))
             return False
 
         # returning True here to prevent the socket from being closed automatically
@@ -487,10 +501,10 @@ HBI {self.net_ident}, error landing code:
         return False  # let the socket be closed automatically
 
     def _handle_landing_error(self, exc):
-        self.disconnect(exc)
+        asyncio.create_task(self.disconnect(exc))
 
     def _handle_peer_error(self, err_reaon):
-        self.disconnect(f"HBI peer error: {err_reaon}", False)
+        asyncio.create_task(self.disconnect(f"HBI peer error: {err_reaon}", False))
 
     # should be called by wire protocol
     def _disconnected(self, exc=None):

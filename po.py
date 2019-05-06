@@ -3,6 +3,7 @@ import inspect
 from collections import deque
 from typing import *
 
+from ._details import *
 from .co import PoCo
 from .log import *
 from .sendctrl import SendCtrl
@@ -103,7 +104,8 @@ class PostingEnd:
                 yield from pull_from(boc1)
 
         for buf in pull_from(bufs):
-            max_chunk_size = self.high_water_mark_send
+            # take receiving high watermark as reference for max chunk size
+            max_chunk_size = self._wire.wire_buf_high
             remain_size = len(buf)
             send_from_idx = 0
             while remain_size > max_chunk_size:
@@ -165,18 +167,6 @@ HBI {self.net_ident} disconnecting due to error:
 
         disc_fut = self._disc_fut = asyncio.get_running_loop().create_future()
 
-        disconn_cb = self.context.get("hbi_disconnecting", None)
-        if disconn_cb is not None:
-            try:
-                maybe_coro = disconn_cb(err_reason)
-                if inspect.isawaitable(maybe_coro):
-                    await maybe_coro
-            except Exception:
-                logger.warning(
-                    f"HBI {self.net_ident} disconnecting callback failure ignored.",
-                    exc_info=True,
-                )
-
         try:
             if wire.transport.is_closing():
                 logger.warning(
@@ -185,7 +175,7 @@ HBI {self.net_ident} disconnecting due to error:
 
                 if err_reason is not None and try_send_peer_err:
                     logger.warning(
-                        f"Not sending peer error {err_reason!s} as transport is closing.",
+                        f"Not sending peer error as transport is closing.\n >>> {err_reason!s}",
                         exc_info=True,
                     )
             else:
