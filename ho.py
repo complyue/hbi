@@ -107,7 +107,7 @@ HBI {self.net_ident} disconnecting due to error:
 
         disc_fut = self._disc_fut = asyncio.get_running_loop().create_future()
 
-        disconn_cb = self.context.get("hbi_disconnecting", None)
+        disconn_cb = self.ctx.get("hbi_disconnecting", None)
         if disconn_cb is not None:
             try:
                 maybe_coro = disconn_cb(err_reason)
@@ -146,7 +146,7 @@ HBI {self.net_ident} disconnecting due to error:
 
     # should be called by wire protocol
     def _connected(self):
-        wire = self.wire
+        wire = self._wire
         self.net_ident = wire.net_ident
         self.local_addr = wire.local_addr
 
@@ -333,7 +333,7 @@ HBI {self.net_ident} disconnecting due to error:
 
     def _land_code(self, code):
         # allow customization of code landing
-        lander = self.context.get("__hbi_land__", None)
+        lander = self.ctx.get("__hbi_land__", None)
         if lander is not None:
             assert callable(lander), "non-callable __hbi_land__ defined ?!"
             try:
@@ -474,7 +474,7 @@ HBI {self.net_ident}, error landing code:
             return False
 
         # returning True here to prevent the socket from being closed automatically
-        peer_done_cb = self.context.get("hbi_peer_done", None)
+        peer_done_cb = self.ctx.get("hbi_peer_done", None)
         if peer_done_cb is not None:
             maybe_coro = peer_done_cb()
             if inspect.iscoroutine(maybe_coro):
@@ -511,7 +511,7 @@ HBI {self.net_ident}, error landing code:
         if hoth is not None:
             hoth.cancel()
 
-        disconn_cb = self.context.get("hbi_disconnected", None)
+        disconn_cb = self.ctx.get("hbi_disconnected", None)
         if disconn_cb is not None:
             maybe_coro = disconn_cb(exc)
             if inspect.iscoroutine(maybe_coro):

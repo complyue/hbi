@@ -221,7 +221,7 @@ HBI {self.net_ident} disconnecting due to error:
 
     # should be called by wire protocol
     def _connected(self):
-        wire = self.wire
+        wire = self._wire
         self.net_ident = wire.net_ident
         self.remote_addr = wire.remote_addr
 

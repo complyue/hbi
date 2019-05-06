@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import socket
 import traceback
 from typing import *
@@ -11,6 +12,18 @@ from .po import *
 __all__ = ["HBIC", "HBIS"]
 
 logger = get_logger(__name__)
+
+
+async def _call_init_magic(init_magic, po, ho):
+    try:
+        maybe_coro = init_magic(po=po, ho=ho)
+        if inspect.iscoroutine(maybe_coro):
+            await maybe_coro
+    except Exception as exc:
+        logger.error(f"Error calling __hbi_init__()", exc_info=True)
+
+        err_reason = traceback.format_exc()
+        await ho.disconnect(err_reason)
 
 
 class HBIC:
@@ -94,9 +107,7 @@ class HBIC:
 
                 init_magic = ho.ctx.get("__hbi_init__", None)
                 if init_magic is not None:
-                    maybe_coro = init_magic(po, ho)
-                    if inspect.iscoroutine(maybe_coro):
-                        init_coro = maybe_coro
+                    init_coro = _call_init_magic(init_magic, po, ho)
 
             return SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
 
@@ -109,8 +120,8 @@ class HBIC:
             # TCP socket
             transport, wire = await loop.create_connection(
                 ProtocolFactory,
-                host=addr.get("host", "127.0.0.1"),
-                port=addr.get("port", 3232),
+                host=self.addr.get("host", "127.0.0.1"),
+                port=self.addr.get("port", 3232),
                 **self.net_opts,
             )
         self._wire = wire
@@ -184,18 +195,21 @@ class HBIS:
         loop = asyncio.get_running_loop()
 
         def ProtocolFactory():
-            po = PostingEnd()
-            ho = HostingEnd(po, self.app_queue_size)
-            ho.ctx = self.context_factory(po=po, ho=ho)
-            wire = SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
+            try:
+                po = PostingEnd()
+                ho = HostingEnd(po, self.app_queue_size)
+                ho.ctx = self.context_factory(po=po, ho=ho)
+                wire = SocketWire(po, ho, self.wire_buf_high, self.wire_buf_low)
 
-            init_magic = ho.ctx.get("__hbi_init__", None)
-            if init_magic is not None:
-                maybe_coro = init_magic(po, ho)
-                if inspect.iscoroutine(maybe_coro):
-                    loop.create_task(maybe_coro)
+                init_magic = ho.ctx.get("__hbi_init__", None)
+                if init_magic is not None:
+                    loop.call_soon(
+                        loop.create_task, _call_init_magic(init_magic, po, ho)
+                    )
 
-            return wire
+                return wire
+            except Exception:
+                logger.error(f"Error establishing HBI wire.", exc_info=True)
 
         if isinstance(self.addr, (str, bytes)):
             # UNIX domain socket

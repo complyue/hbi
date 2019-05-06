@@ -57,6 +57,8 @@ class SocketWire(asyncio.Protocol):
             ho._wire = self
 
     def connection_made(self, transport):
+        logger.debug(f"HBI connection made: {transport!r}")
+
         self.transport = transport
 
         po = self.po
@@ -77,6 +79,8 @@ class SocketWire(asyncio.Protocol):
         self._take_data(chunk)
 
     def eof_received(self):
+        logger.debug(f"HBI connection eof: {self.transport!r}")
+
         ho = self.ho
         if ho is None:  # posting only connection
             return True  # don't let the transport close itself on peer eof
@@ -84,6 +88,8 @@ class SocketWire(asyncio.Protocol):
         return ho._peer_eof()
 
     def connection_lost(self, exc):
+        logger.debug(f"HBI connection lost: {self.transport!r} exc={exc}")
+
         po = self.po
         if po is not None:
             assert po._wire is self, "wire mismatch ?!"
@@ -139,7 +145,7 @@ class SocketWire(asyncio.Protocol):
 
         peername = transport.get_extra_info("peername")
         if len(peername) in (2, 4):
-            return ":".join(peername)
+            return ":".join(str(v) for v in peername)
         raise NotImplementedError(
             "Socket transport other than tcp4/tcp6 not supported yet."
         )
@@ -191,7 +197,7 @@ class SocketWire(asyncio.Protocol):
 
         sockname = transport.get_extra_info("sockname")
         if len(sockname) in (2, 4):
-            return ":".join(sockname)
+            return ":".join(str(v) for v in sockname)
         raise NotImplementedError(
             "Socket transport other than tcp4/tcp6 not supported yet."
         )
@@ -233,7 +239,7 @@ class SocketWire(asyncio.Protocol):
                 return
             self._data_sink(chunk)
 
-        if self._disc_fut is not None:
+        if self.ho._disc_fut is not None:
             return  # disconnecting, nop
 
         # ctrl incoming flow regarding hwm/lwm

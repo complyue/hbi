@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from typing import *
 
 from .log import *
@@ -154,7 +155,7 @@ class PoCo(Conver):
             err_msg = "Error sending co_begin: " + str(exc)
             err_stack = "".join(traceback.format_exc())
             err_reason = err_msg + "\n" + err_stack
-            po.disconnect(err_reason)
+            await po.disconnect(err_reason)
             raise
 
     async def end(self):

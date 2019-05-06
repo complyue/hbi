@@ -24,6 +24,6 @@ class CancellableQueue(asyncio.Queue):
     def cancel_putters(self, exc=None):
         self._cancel(self._putters, exc)
 
-    def cancell_all(self, exc=None):
+    def cancel_all(self, exc=None):
         self._cancel(self._getters, exc)
         self._cancel(self._putters, exc)
