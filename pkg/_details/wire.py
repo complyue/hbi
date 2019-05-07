@@ -1,9 +1,9 @@
 import asyncio
 
-from ..log import *
-from ..proto import *
 from ..buflist import *
 from ..bytesbuf import *
+from ..log import *
+from .packet import *
 
 __all__ = ["SocketWire"]
 
@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 class SocketWire(asyncio.Protocol):
     """
-    HBI protocol over TCP/SSL transports
+    HBI wire protocol over a Socket transport
 
     """
 

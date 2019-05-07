@@ -7,7 +7,6 @@ from .context import *
 from .ho import *
 from .log import *
 from .po import *
-from .proto import *
 from .sendctrl import *
 
 __all__ = [
@@ -38,9 +37,6 @@ __all__ = [
 
     # exports from .po
     'PostingEnd',
-
-    # exports from .proto
-    'PACK_HEADER_MAX',
 
     # exports from .sendctrl
     'SendCtrl',
