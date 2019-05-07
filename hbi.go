@@ -1,21 +1,21 @@
 package hbi
 
 import (
-	"github.com/complyue/hbigo/pkg/conn"
-	"github.com/complyue/hbigo/pkg/proto"
+	"github.com/complyue/hbi/pkg/conn"
+	"github.com/complyue/hbi/pkg/ctx"
+	"github.com/complyue/hbi/pkg/proto"
 )
 
 type (
-	HoContext = proto.HoContext
-	TCPConn   = conn.TCPConn
+	HostingCtx = ctx.HostingCtx
 
-	Hosting = proto.Hosting
-	Posting = proto.Posting
-	Conver  = proto.Conver
+	HostingEnd = proto.HostingEnd
+	PostingEnd = proto.PostingEnd
+	Conver     = proto.Conver
 )
 
 var (
-	NewHoContext = proto.NewHoContext
+	NewHostingCtx = ctx.NewHostingCtx
 
 	ServeTCP = conn.ServeTCP
 	DialTCP  = conn.DialTCP
