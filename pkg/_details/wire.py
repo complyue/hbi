@@ -1,8 +1,8 @@
 import asyncio
 
-from ..buflist import *
-from ..bytesbuf import *
 from ..log import *
+from .buflist import *
+from .bytesbuf import *
 from .packet import *
 
 __all__ = ["SocketWire"]

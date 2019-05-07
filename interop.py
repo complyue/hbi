@@ -7,11 +7,22 @@ from math import nan
 
 from collections import OrderedDict
 
-__all__ = ["null", "true", "false", "nan", "NaN", "JSONObj", "JSONArray", "JSONStr"]
+__all__ = [
+    "nil",
+    "true",
+    "false",
+    "null",
+    "nan",
+    "NaN",
+    "JSONObj",
+    "JSONArray",
+    "JSONStr",
+]
 
-null = None
+nil = None
 true = True
 false = False
+null = None
 NaN = nan
 
 

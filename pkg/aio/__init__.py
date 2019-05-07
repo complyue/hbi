@@ -1,5 +1,6 @@
 from .q import *
 from .sig import *
+from .v import *
 
 __all__ = [
 
@@ -8,5 +9,8 @@ __all__ = [
 
     # exports from .sig
     'handle_signals',
+
+    # exports from .v
+    'SyncVar',
 
 ]
