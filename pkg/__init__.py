@@ -5,7 +5,6 @@ from .co import *
 from .conn import *
 from .context import *
 from .ho import *
-from .interop import *
 from .log import *
 from .po import *
 from .proto import *
@@ -33,9 +32,6 @@ __all__ = [
 
     # exports from .ho
     'HostingEnd',
-
-    # exports from .interop
-    'null', 'true', 'false', 'nan', 'NaN', 'JSOND',
 
     # exports from .log
     'root_logger', 'get_logger',
