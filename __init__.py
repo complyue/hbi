@@ -8,7 +8,7 @@ from .pkg import *
 __all__ = [
 
     # exports from .interop
-    'null', 'true', 'false', 'nan', 'NaN', 'JSOND',
+    'null', 'true', 'false', 'nan', 'NaN', 'JSONObj', 'JSONArray', 'JSONStr',
 
     # exports from .pkg
     'CancellableQueue', 'handle_signals', 'BufferList', 'BytesBuffer', 'Conver', 'HBIC', 'HBIS', 'run_in_context',
