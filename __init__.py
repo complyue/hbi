@@ -11,7 +11,7 @@ __all__ = [
     'nil', 'true', 'false', 'null', 'nan', 'NaN', 'JSONObj', 'JSONArray', 'JSONStr',
 
     # exports from .pkg
-    'CancellableQueue', 'handle_signals', 'SyncVar', 'HBIC', 'HBIS', 'run_in_context', 'root_logger', 'get_logger',
+    'CancellableQueue', 'handle_signals', 'SyncVar', 'HBIC', 'HBIS', 'run_in_env', 'root_logger', 'get_logger',
     'Conver', 'HostingEnd', 'PostingEnd',
 
 ]

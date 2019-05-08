@@ -4,7 +4,7 @@ from typing import *
 
 from .._details import *
 from ..aio import *
-from ..ctx import run_in_context
+from ..he import *
 from ..log import *
 from .co import HoCo
 
@@ -118,18 +118,6 @@ HBI {self.net_ident} disconnecting due to error:
             )
 
         disc_fut = self._disc_fut = asyncio.get_running_loop().create_future()
-
-        disconn_cb = self.ctx.get("hbi_disconnecting", None)
-        if disconn_cb is not None:
-            try:
-                maybe_coro = disconn_cb(err_reason)
-                if inspect.isawaitable(maybe_coro):
-                    await maybe_coro
-            except Exception:
-                logger.warning(
-                    f"HBI {self.net_ident} disconnecting callback failure ignored.",
-                    exc_info=True,
-                )
 
         if self.po is not None:
             # close posting endpoint (i.e. write eof) before closing the socket
@@ -372,7 +360,7 @@ HBI {self.net_info}, error custom landing code:
         defs = self.ctx if self.open_ctx else {}
         try:
 
-            landed = run_in_context(code, self.ctx, defs)
+            landed = run_in_env(code, self.ctx, defs)
             return landed
 
         except Exception as exc:
@@ -525,8 +513,18 @@ HBI {self.net_ident}, error landing code:
         if hoth is not None:
             hoth.cancel()
 
-        disconn_cb = self.ctx.get("hbi_disconnected", None)
-        if disconn_cb is not None:
-            maybe_coro = disconn_cb(exc)
-            if inspect.iscoroutine(maybe_coro):
-                asyncio.get_running_loop().create_task(maybe_coro)
+        cleanup_cb = self.ctx.get("__hbi_cleanup__", None)
+        if cleanup_cb is not None:
+
+            async def call_cleanup():
+                try:
+                    maybe_coro = cleanup_cb(exc)
+                    if inspect.iscoroutine(maybe_coro):
+                        await maybe_coro
+                except Exception:
+                    logger.warning(
+                        f"HBI {self.net_ident} cleanup callback failure ignored.",
+                        exc_info=True,
+                    )
+
+            asyncio.get_running_loop().create_task(call_cleanup)

@@ -1,6 +1,6 @@
 from .aio import *
 from .conn import *
-from .ctx import *
+from .he import *
 from .log import *
 from .proto import *
 
@@ -12,8 +12,8 @@ __all__ = [
     # exports from .conn
     'HBIC', 'HBIS',
 
-    # exports from .ctx
-    'run_in_context',
+    # exports from .he
+    'run_in_env',
 
     # exports from .log
     'root_logger', 'get_logger',

@@ -79,7 +79,7 @@ class HBIC:
         if exc_type is None:
             err_reason = None
         else:
-            err_msg = str(exc_type) + ":" + str(exc_val)
+            err_msg = str(exc_type) + ": " + str(exc_val)
             err_stack = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
             err_reason = err_msg + "\n" + err_stack
 
