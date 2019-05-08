@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/complyue/hbi"
 	"github.com/complyue/hbi/pkg/errors"
@@ -23,6 +24,20 @@ func ReplWith(context hbi.HostingCtx) {
 
 	if _, ok := context["ps1"]; !ok {
 		context["ps1"] = "HBI:> "
+	}
+
+	if _, ok := context["dir"]; !ok {
+		context["dir"] = func() {
+			names := make([]string, 0, len(context))
+			for name := range context {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				val := context[name]
+				fmt.Printf("\n * %s - %T\n:= %#v\n", name, val, val)
+			}
+		}
 	}
 
 	line := liner.NewLiner()
