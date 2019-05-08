@@ -6,14 +6,13 @@ import (
 	"sync"
 
 	details "github.com/complyue/hbi/pkg/_details"
-	"github.com/complyue/hbi/pkg/ctx"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/golang/glog"
 )
 
 type PostingEnd interface {
 	// be a cancellable context
-	ctx.CancellableContext
+	CancellableContext
 
 	NetIdent() string
 	RemoteAddr() net.Addr
@@ -30,7 +29,7 @@ type PostingEnd interface {
 
 func NewPostingEnd(wire details.HBIWire) PostingEnd {
 	po := &postingEnd{
-		CancellableContext: ctx.NewCancellableContext(),
+		CancellableContext: NewCancellableContext(),
 
 		wire:       wire,
 		netIdent:   wire.NetIdent(),
@@ -41,7 +40,7 @@ func NewPostingEnd(wire details.HBIWire) PostingEnd {
 
 type postingEnd struct {
 	// embed a cancellable context
-	ctx.CancellableContext
+	CancellableContext
 
 	wire details.HBIWire
 
@@ -231,7 +230,7 @@ func (po *postingEnd) Disconnect(errReason string, trySendPeerError bool) {
 	po.CancellableContext.Cancel(errors.New(errReason))
 
 	if errReason != "" {
-		glog.Errorf("HBI disconnecting due to error: %s", errReason)
+		glog.Errorf("HBI %s disconnecting due to error: %s", po.netIdent, errReason)
 		if trySendPeerError {
 			if alreadyCancelled {
 				glog.Warningf("Not sending peer error as po already cancelled because: %+v", alreadyErr)

@@ -1,10 +1,11 @@
 package repl
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"strings"
 
 	"github.com/complyue/hbi"
 	"github.com/complyue/hbi/pkg/errors"
@@ -12,7 +13,7 @@ import (
 	"github.com/peterh/liner"
 )
 
-func ReplWith(context hbi.HostingCtx) {
+func ReplWith(he *hbi.HostingEnv) {
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -22,37 +23,40 @@ func ReplWith(context hbi.HostingCtx) {
 		os.Exit(0)
 	}()
 
-	if _, ok := context["ps1"]; !ok {
-		context["ps1"] = "HBI:> "
-	}
+	he.ExposeValue("ps1", "HBI:> ")
 
-	if _, ok := context["dir"]; !ok {
-		context["dir"] = func() {
-			names := make([]string, 0, len(context))
-			for name := range context {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				val := context[name]
-				fmt.Printf("\n * %s - %T\n:= %#v\n", name, val, val)
-			}
+	he.ExposeFunction("dir", func() string {
+		var out strings.Builder
+		for _, name := range he.ExposedNames() {
+			val := he.Get(name)
+			out.WriteString(fmt.Sprintf("\n # %s // %T\n := %#v\n", name, val, val))
 		}
-	}
+		return out.String()
+	})
+	he.ExposeFunction("repr", func(v interface{}) string {
+		return fmt.Sprintf("%#v", v)
+	})
+	he.ExposeFunction("print", func(args ...interface{}) string {
+		return fmt.Sprint(args...)
+	})
+	he.ExposeFunction("printf", func(f string, args ...interface{}) string {
+		return fmt.Sprintf(f, args...)
+	})
 
 	line := liner.NewLiner()
 	defer line.Close()
 	line.SetCtrlCAborts(true)
 
 	var (
-		code   string
-		result interface{}
-		err    error
+		code string
+		err  error
 	)
+
+	// _, err = runOne(he, "dir()") // help some with delve debug
 
 	for {
 
-		code, err = line.Prompt(fmt.Sprintf("%s", context["ps1"]))
+		code, err = line.Prompt(fmt.Sprintf("%v", he.Get("ps1")))
 		if err != nil {
 			switch err {
 			case io.EOF: // Ctrl^D
@@ -67,16 +71,23 @@ func ReplWith(context hbi.HostingCtx) {
 		}
 		line.AppendHistory(code)
 
-		result, err = context.Exec(code, "HBI-CODE")
-		fmt.Println()
-		if err != nil {
-			fmt.Printf("[Error]: %+v\n", err)
-		} else {
-			fmt.Printf("[Result]: %#v\n", result)
-		}
-
+		_, err = runOne(he, code)
 	}
 
 	println("\nBye.")
 
+}
+
+func runOne(he *hbi.HostingEnv, code string) (result interface{}, err error) {
+
+	result, err = he.RunInEnv(code, context.Background())
+	if err != nil {
+		fmt.Printf("[Error]: %+v\n", err)
+	} else if text, ok := result.(string); ok {
+		fmt.Println(text)
+	} else {
+		fmt.Printf(" // %T\n := %#v\n", result, result)
+	}
+
+	return
 }

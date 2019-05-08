@@ -6,7 +6,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/complyue/hbi/pkg/ctx"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/golang/glog"
 )
@@ -27,8 +26,6 @@ type HBIWire interface {
 
 // TCPWire is HBI wire protocol over a plain tcp socket.
 type TCPWire struct {
-	ctx.CancellableContext
-
 	conn *net.TCPConn
 
 	netIdent  string
@@ -37,9 +34,8 @@ type TCPWire struct {
 
 func NewTCPWire(conn *net.TCPConn) *TCPWire {
 	return &TCPWire{
-		CancellableContext: ctx.NewCancellableContext(),
-		conn:               conn,
-		netIdent:           fmt.Sprintf("%s<->%s", conn.LocalAddr(), conn.RemoteAddr()),
+		conn:     conn,
+		netIdent: fmt.Sprintf("%s<->%s", conn.LocalAddr(), conn.RemoteAddr()),
 	}
 }
 
@@ -88,9 +84,6 @@ func (wire *TCPWire) SendData(data <-chan []byte) (n int64, err error) {
 	var nb int64
 	for {
 		select {
-		case <-wire.Done():
-			// context cancelled
-			return
 		case buf, ok := <-data:
 			if !ok {
 				// no more buf to send
@@ -133,9 +126,6 @@ func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
 
 	// read header
 	for {
-		if wire.Cancelled() {
-			return
-		}
 		start = len(hdrBuf)
 		readInto := hdrBuf[start:cap(hdrBuf)]
 		if wire.readahead != nil {
@@ -225,9 +215,6 @@ func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
 
 	// read payload
 	for len(payloadBuf) < cap(payloadBuf) {
-		if wire.Cancelled() {
-			return
-		}
 		if err == io.EOF {
 			err = errors.New("premature packet at EOF")
 			return
@@ -263,9 +250,6 @@ func (wire *TCPWire) RecvData(data <-chan []byte) (n int64, err error) {
 	var nb int
 	for {
 		select {
-		case <-wire.Done():
-			// context cancelled
-			return
 		case buf, ok := <-data:
 			if !ok {
 				// no more buf to send

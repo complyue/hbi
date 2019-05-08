@@ -1,24 +1,24 @@
 package conn
 
 import (
+	"fmt"
 	"net"
 
 	details "github.com/complyue/hbi/pkg/_details"
-
-	"github.com/complyue/hbi/pkg/ctx"
 	"github.com/complyue/hbi/pkg/errors"
+	"github.com/complyue/hbi/pkg/he"
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/golang/glog"
 )
 
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
-// context created from the `ctxFact` function.
+// hosting env created from the `heFactory` function.
 //
 // `cb` will be called with the created `*net.TCPListener`, it's handful to specify port as 0,
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(ctxFact func() ctx.HostingCtx, addr string, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPListener)) (err error) {
 	var raddr *net.TCPAddr
 	raddr, err = net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
@@ -44,27 +44,50 @@ func ServeTCP(ctxFact func() ctx.HostingCtx, addr string, cb func(*net.TCPListen
 		}
 
 		// todo DoS react
-		context := ctxFact()
+		he := heFactory()
 
 		wire := details.NewTCPWire(conn)
 		netIdent := wire.NetIdent()
 		glog.V(1).Infof("New HBI connection accepted: %s", netIdent)
 
 		po := proto.NewPostingEnd(wire)
-		ho := proto.NewHostingEnd(context, po, wire)
+		ho := proto.NewHostingEnd(he, po, wire)
 
-		if initMagic, ok := context["__hbi_init__"].(proto.InitMagicFunction); ok {
-			initMagic(po, ho)
-		} else {
-			context["po"], context["ho"] = po, ho
+		if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						err = errors.RichError(e)
+						errReason := fmt.Sprintf("init callback failed: %+v", err)
+						ho.Disconnect(errReason, true)
+					}
+				}()
+
+				initMagic(po, ho)
+			}()
 		}
+
+		if cleanupMagic, ok := he.Get("__hbi_cleanup__").(proto.CleanupMagicFunction); ok {
+			go func() {
+				defer func() {
+					if e := recover(); e != nil {
+						glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, errors.RichError(e))
+					}
+				}()
+
+				<-ho.Done()
+
+				cleanupMagic(ho.Err())
+			}()
+		}
+
 	}
 }
 
-// DialTCP connects to specified remote address (host:port), react with specified context.
+// DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(context ctx.HostingCtx, addr string) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
+func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
 	raddr, err := net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
@@ -81,12 +104,34 @@ func DialTCP(context ctx.HostingCtx, addr string) (po proto.PostingEnd, ho proto
 	glog.V(1).Infof("New HBI connection established: %s", netIdent)
 
 	po = proto.NewPostingEnd(wire)
-	ho = proto.NewHostingEnd(context, po, wire)
+	ho = proto.NewHostingEnd(he, po, wire)
 
-	if initMagic, ok := context["__hbi_init__"].(proto.InitMagicFunction); ok {
-		initMagic(po, ho)
-	} else {
-		context["po"], context["ho"] = po, ho
+	if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
+		func() {
+			defer func() {
+				if e := recover(); e != nil {
+					err = errors.RichError(e)
+					errReason := fmt.Sprintf("init callback failed: %+v", err)
+					ho.Disconnect(errReason, true)
+				}
+			}()
+
+			initMagic(po, ho)
+		}()
+	}
+
+	if cleanupMagic, ok := he.Get("__hbi_cleanup__").(proto.CleanupMagicFunction); ok {
+		go func() {
+			defer func() {
+				if e := recover(); e != nil {
+					glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, errors.RichError(e))
+				}
+			}()
+
+			<-ho.Done()
+
+			cleanupMagic(ho.Err())
+		}()
 	}
 
 	return

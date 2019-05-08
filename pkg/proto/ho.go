@@ -5,16 +5,16 @@ import (
 	"net"
 
 	details "github.com/complyue/hbi/pkg/_details"
-	"github.com/complyue/hbi/pkg/ctx"
 	"github.com/complyue/hbi/pkg/errors"
+	"github.com/complyue/hbi/pkg/he"
 	"github.com/golang/glog"
 )
 
 type HostingEnd interface {
 	// be a cancellable context
-	ctx.CancellableContext
+	CancellableContext
 
-	Ctx() ctx.HostingCtx
+	Env() *he.HostingEnv
 
 	NetIdent() string
 	LocalAddr() net.Addr
@@ -23,13 +23,17 @@ type HostingEnd interface {
 
 	// Co returns current hosting conversation, or nil if no one open.
 	Co() *HoCo
+
+	Disconnect(errReason string, trySendPeerError bool)
+
+	Close()
 }
 
-func NewHostingEnd(context ctx.HostingCtx, po PostingEnd, wire details.HBIWire) HostingEnd {
+func NewHostingEnd(he *he.HostingEnv, po PostingEnd, wire details.HBIWire) HostingEnd {
 	ho := &hostingEnd{
-		CancellableContext: ctx.NewCancellableContext(),
+		CancellableContext: NewCancellableContext(),
 
-		ctx: context,
+		he: he,
 
 		wire:      wire,
 		netIdent:  wire.NetIdent(),
@@ -77,13 +81,13 @@ func NewHostingEnd(context ctx.HostingCtx, po PostingEnd, wire details.HBIWire) 
 			switch pkt.WireDir {
 			case "":
 
-				if _, err = ho.ctx.Exec(pkt.Payload, "HBI-CODE"); err != nil {
+				if _, err = ho.Exec(pkt.Payload); err != nil {
 					return
 				}
 
 			case "co_send":
 
-				if result, err = ho.ctx.Exec(pkt.Payload, "HBI-CODE"); err != nil {
+				if result, err = ho.Exec(pkt.Payload); err != nil {
 					return
 				}
 				if _, err = wire.SendPacket(fmt.Sprintf("%#v", result), "co_recv"); err != nil {
@@ -152,9 +156,9 @@ func NewHostingEnd(context ctx.HostingCtx, po PostingEnd, wire details.HBIWire) 
 
 type hostingEnd struct {
 	// embed a cancellable context
-	ctx.CancellableContext
+	CancellableContext
 
-	ctx ctx.HostingCtx
+	he *he.HostingEnv
 
 	wire details.HBIWire
 
@@ -166,8 +170,13 @@ type hostingEnd struct {
 	co *HoCo
 }
 
-func (ho *hostingEnd) Ctx() ctx.HostingCtx {
-	return ho.ctx
+func (ho *hostingEnd) Env() *he.HostingEnv {
+	return ho.he
+}
+
+func (ho *hostingEnd) Exec(code string) (result interface{}, err error) {
+	result, err = ho.he.RunInEnv(code, ho)
+	return
 }
 
 func (ho *hostingEnd) NetIdent() string {
@@ -221,7 +230,7 @@ func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 		switch pkt.WireDir {
 		case "":
 
-			if _, err = ho.ctx.Exec(pkt.Payload, "HBI-CODE"); err != nil {
+			if _, err = ho.Exec(pkt.Payload); err != nil {
 				return
 			}
 
@@ -231,7 +240,7 @@ func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 
 		case "co_recv":
 
-			obj, err = ho.ctx.Exec(pkt.Payload, "HBI-CODE")
+			obj, err = ho.Exec(pkt.Payload)
 			return
 
 		default:

@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 
 	"github.com/complyue/hbi"
+	"github.com/complyue/hbi/interop"
 	"github.com/complyue/hbi/pkg/repl"
 	"github.com/golang/glog"
 )
@@ -22,13 +22,9 @@ func init() {
 func main() {
 	flag.Parse()
 
-	context := hbi.NewHostingCtx()
+	he := hbi.NewHostingEnv()
 
-	context["ps1"] = "HBI:> "
+	interop.ExposeInterOpValues(he)
 
-	context["print"] = fmt.Print
-	context["printf"] = fmt.Printf
-
-	repl.ReplWith(context)
-
+	repl.ReplWith(he)
 }
