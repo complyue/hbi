@@ -95,7 +95,7 @@ func (ctx HostingCtx) ExposeTypeAlias(typedPtrs map[string]interface{}) (err err
 
 // this needs not to be thread safe, should only be called from a single hosting goroutine
 func (ctx HostingCtx) Exec(code string, sourceName string) (result interface{}, err error) {
-	result, err = goScript.RunInContext(sourceName, code, ctx)
+	result, err = goScript.RunInContext(sourceName, code, (map[string]interface{})(ctx))
 	return
 }
 
