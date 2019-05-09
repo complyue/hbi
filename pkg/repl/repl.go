@@ -51,7 +51,6 @@ func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 	// fancy count down to test/showcase async control of liner
 	he.ExposeFunction("sd", func(cnt int) string {
 		go func() {
-
 			for n := cnt; n > 0; n-- {
 				line.ChangePrompt(fmt.Sprintf("SelfDtor(%d): ", n))
 
@@ -61,6 +60,7 @@ func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 				fmt.Printf(" %d seconds passed.\n", 1+cnt-n)
 				line.ShowPrompt()
 			}
+
 			line.HidePrompt()
 			fmt.Println("Boom!!!")
 			line.ShowPrompt()
