@@ -6,14 +6,15 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/complyue/hbi"
 	"github.com/complyue/hbi/pkg/errors"
+	"github.com/complyue/liner"
 	"github.com/golang/glog"
-	"github.com/peterh/liner"
 )
 
-func ReplWith(he *hbi.HostingEnv) {
+func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -47,20 +48,46 @@ func ReplWith(he *hbi.HostingEnv) {
 	defer line.Close()
 	line.SetCtrlCAborts(true)
 
+	// fancy count down to test/showcase async control of liner
+	he.ExposeFunction("sd", func(cnt int) string {
+		go func() {
+
+			for n := cnt; n > 0; n-- {
+				line.ChangePrompt(fmt.Sprintf("SelfDtor(%d): ", n))
+
+				time.Sleep(1 * time.Second)
+
+				line.HidePrompt()
+				fmt.Printf(" %d seconds passed.\n", 1+cnt-n)
+				line.ShowPrompt()
+			}
+			line.HidePrompt()
+			fmt.Println("Boom!!!")
+			line.ShowPrompt()
+
+			line.ChangePrompt("!!<defunct> ")
+		}()
+
+		return fmt.Sprintf("Self Destruction in %d seconds ...", cnt)
+	})
+
 	var (
 		code string
 		err  error
 	)
 
-	// _, err = runOne(he, "dir()") // help some with delve debug
+	if bannerScript != "" {
+		_, err = runOne(he, bannerScript)
+	}
 
 	for {
 
 		code, err = line.Prompt(fmt.Sprintf("%v", he.Get("ps1")))
 		if err != nil {
 			switch err {
-			case io.EOF: // Ctrl^D
-			case liner.ErrPromptAborted: // Ctrl^C
+			case io.EOF: // Ctrl^D to quit
+			case liner.ErrPromptAborted: // Ctrl^C to giveup whatever input
+				continue
 			default:
 				panic(errors.RichError(err))
 			}

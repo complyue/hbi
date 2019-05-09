@@ -20,7 +20,7 @@ type PostingEnd interface {
 	Co(ho HostingEnd) (co *PoCo, err error)
 
 	Notif(code string) (err error)
-	NotifData(code string, data <-chan []byte) (err error)
+	NotifData(code string, buf []byte) (err error)
 
 	Disconnect(errReason string, trySendPeerError bool)
 
@@ -145,10 +145,14 @@ func (po *postingEnd) coDequeue() (co Conver) {
 	return
 }
 
-func (po *postingEnd) Co(ho HostingEnd) (co *PoCo, err error) {
+func (po *postingEnd) Co(receivingHo HostingEnd) (co *PoCo, err error) {
+	ho, ok := receivingHo.(*hostingEnd)
+	if !ok && receivingHo != nil {
+		panic("bad ho type")
+	}
 	co = &PoCo{
 		po:        po,
-		ho:        ho.(*hostingEnd),
+		ho:        ho,
 		ended:     make(chan struct{}),
 		respBegin: make(chan struct{}),
 	}
@@ -186,7 +190,7 @@ func (po *postingEnd) Notif(code string) (err error) {
 	return
 }
 
-func (po *postingEnd) NotifData(code string, data <-chan []byte) (err error) {
+func (po *postingEnd) NotifData(code string, buf []byte) (err error) {
 	var co *PoCo
 	if co, err = po.Co(nil); err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
@@ -200,7 +204,7 @@ func (po *postingEnd) NotifData(code string, data <-chan []byte) (err error) {
 		po.Disconnect(errReason, false)
 		return
 	}
-	if _, err = po.wire.SendData(data); err != nil {
+	if _, err = po.wire.SendData(buf); err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
 		po.Disconnect(errReason, false)
 		return
