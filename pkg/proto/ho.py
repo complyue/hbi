@@ -527,4 +527,4 @@ HBI {self.net_ident}, error landing code:
                         exc_info=True,
                     )
 
-            asyncio.get_running_loop().create_task(call_cleanup)
+            asyncio.get_running_loop().create_task(call_cleanup())
