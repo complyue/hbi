@@ -38,10 +38,12 @@ func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 		return fmt.Sprintf("%#v", v)
 	})
 	he.ExposeFunction("print", func(args ...interface{}) string {
-		return fmt.Sprint(args...)
+		fmt.Print(args...)
+		return ""
 	})
 	he.ExposeFunction("printf", func(f string, args ...interface{}) string {
-		return fmt.Sprintf(f, args...)
+		fmt.Printf(f, args...)
+		return ""
 	})
 
 	line := liner.NewLiner()
