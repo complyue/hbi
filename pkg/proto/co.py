@@ -18,8 +18,8 @@ class Conver:
     __slots__ = ()
 
     @property
-    def coid(self) -> str:
-        raise NotImplementedError
+    def co_seq(self) -> str:
+        return self._co_seq
 
     async def send_code(self, code):
         raise NotImplementedError
@@ -49,16 +49,13 @@ class HoCo(Conver):
 
     """
 
-    __slots__ = ("ho", "_coid", "_send_done_fut")
+    __slots__ = ("ho", "_co_seq", "_send_done_fut")
 
-    def __init__(self, ho, coid):
+    def __init__(self, ho, co_seq):
         self.ho = ho
-        self._coid = coid
-        self._send_done_fut = asyncio.get_running_loop().create_future()
+        self._co_seq = co_seq
 
-    @property
-    def coid(self) -> str:
-        return self._coid
+        self._send_done_fut = asyncio.get_running_loop().create_future()
 
     async def send_code(self, code):
         ho = self.ho
@@ -111,18 +108,21 @@ class PoCo(Conver):
 
     """
 
-    __slots__ = ("po", "_send_done_fut", "_begin_acked_fut", "_end_acked_fut")
+    __slots__ = (
+        "po",
+        "_co_seq",
+        "_send_done_fut",
+        "_begin_acked_fut",
+        "_end_acked_fut",
+    )
 
-    def __init__(self, po):
+    def __init__(self, po, co_seq):
         self.po = po
+        self._co_seq = co_seq
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
         self._begin_acked_fut = None
         self._end_acked_fut = None
-
-    @property
-    def coid(self) -> str:
-        return repr(id(self))
 
     async def __aenter__(self):
         await self.begin()
@@ -148,7 +148,7 @@ class PoCo(Conver):
         coq.append(self)
 
         try:
-            await po._send_text(self.coid, b"co_begin")
+            await po._send_text(self.co_seq, b"co_begin")
         except Exception as exc:
             self._begin_acked_fut.set_exception(exc)
 
@@ -177,9 +177,9 @@ class PoCo(Conver):
                 raise exc
 
             try:
-                await po._send_text(self.coid, b"co_end")
+                await po._send_text(self.co_seq, b"co_end")
 
-                self._send_done_fut.set_result(self.coid)
+                self._send_done_fut.set_result(self.co_seq)
             except Exception as exc:
                 self._end_acked_fut.set_exception(exc)
 
@@ -201,9 +201,9 @@ class PoCo(Conver):
     async def wait_ended(self):
         await self._send_done_fut
 
-    def _begin_acked(self, coid):
-        if self.coid != coid:
-            raise asyncio.InvalidStateError("coid mismatch ?!")
+    def _begin_acked(self, co_seq):
+        if self.co_seq != co_seq:
+            raise asyncio.InvalidStateError("co_seq mismatch ?!")
 
         fut = self._begin_acked_fut
         if fut is None:
@@ -212,17 +212,17 @@ class PoCo(Conver):
         if ended is not None and ended.done():
             raise asyncio.InvalidStateError("co_end acked already!")
 
-        fut.set_result(coid)
+        fut.set_result(co_seq)
 
-    def _end_acked(self, coid):
-        if self.coid != coid:
-            raise asyncio.InvalidStateError("coid mismatch ?!")
+    def _end_acked(self, co_seq):
+        if self.co_seq != co_seq:
+            raise asyncio.InvalidStateError("co_seq mismatch ?!")
 
         fut = self._end_acked_fut
         if fut is None:
             raise asyncio.InvalidStateError("co_end not sent yet!")
 
-        fut.set_result(coid)
+        fut.set_result(co_seq)
 
     async def response_begin(self):
         fut = self._begin_acked_fut

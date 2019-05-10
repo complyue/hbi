@@ -17,7 +17,7 @@ type PostingEnd interface {
 	NetIdent() string
 	RemoteAddr() net.Addr
 
-	Co(ho HostingEnd) (co *PoCo, err error)
+	Co() (co *PoCo, err error)
 
 	Notif(code string) (err error)
 	NotifData(code string, buf []byte) (err error)
@@ -27,33 +27,31 @@ type PostingEnd interface {
 	Close()
 }
 
-func NewPostingEnd(wire details.HBIWire) PostingEnd {
-	po := &postingEnd{
-		CancellableContext: NewCancellableContext(),
-
-		wire:       wire,
-		netIdent:   wire.NetIdent(),
-		remoteAddr: wire.RemoteAddr(),
-	}
-	return po
-}
+const (
+	// start/end value of co id seqs, to have the string length between 3~10
+	minCoSeq int = 101
+	maxCoSeq int = 9999999999
+)
 
 type postingEnd struct {
 	// embed a cancellable context
 	CancellableContext
 
+	ho   *hostingEnd
 	wire details.HBIWire
 
 	netIdent   string
 	remoteAddr net.Addr
 
+	// increamental record for non-repeating conversation ID sequence
+	nextCoSeq int
 	// conversation queue to serialize sending activities
-	coq []Conver
-	// to guard access to `coq`
+	coq []baseCo
+	// to guard access to `nextCoSeq/coq`
 	muCoq sync.Mutex
 }
 
-func (po *postingEnd) coEnd(co Conver, popOff bool) {
+func (po *postingEnd) coEnd(co *baseCo, popOff bool) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -61,53 +59,87 @@ func (po *postingEnd) coEnd(co Conver, popOff bool) {
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != po.coq[ql-1] {
+	if co != &po.coq[ql-1] {
 		panic(errors.New("co mismatch coq tail"))
 	}
 
 	// close this conversation's ended channel, so next pending enqueued conversation
 	// get the signal to procede get enqueued.
-	close(co.Ended())
+	close(co.ended)
 
 	if popOff {
-		po.coq = po.coq[0 : ql-1]
+		po.coq = po.coq[:ql-1]
 	}
 }
 
-func (po *postingEnd) coEnqueue(co Conver) {
+func (po *postingEnd) coEnqueue(coSeq string) (co *baseCo) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
 	ql := len(po.coq)
 	if ql > 0 {
+		// wait tail co ended (i.e. finished all sending work) before
+		// a new co can be enqueued.
 		prevCo := po.coq[ql-1]
-		select {
-		case <-po.Done():
-			err := po.Err()
-			if err == nil {
-				err = errors.New("po cancelled")
+
+		func() {
+			// release muCoq during waiting for prevCo to end,
+			// or `coEnd()` on prevCo will deadlock.
+			po.muCoq.Unlock()
+			defer po.muCoq.Lock()
+
+			select {
+			case <-po.Done():
+				err := po.Err()
+				if err == nil {
+					err = errors.New("po cancelled")
+				}
+				panic(err)
+			case <-prevCo.ended:
+				// normal case
 			}
-			panic(err)
-		case <-prevCo.Ended():
-			// normal case
-		}
+		}()
 	}
 
-	po.coq = append(po.coq, co)
+	// this'll be kept nil for ho co, only assigned for po co
+	var respBegan chan struct{}
+
+	if len(coSeq) > 0 {
+		// creating a new ho co with coSeq received from peer
+	} else {
+		// creating a new po co, assign a new coSeq at this endpoint
+		coSeq = fmt.Sprintf("%d", po.nextCoSeq)
+		po.nextCoSeq++
+		if po.nextCoSeq > maxCoSeq {
+			po.nextCoSeq = minCoSeq
+		}
+		// this is only used for a po co
+		respBegan = make(chan struct{})
+	}
+
+	po.coq = append(po.coq, baseCo{
+		// common fields
+		ho: po.ho, coSeq: coSeq, ended: make(chan struct{}),
+		// po co only fields
+		po: po, respBegan: respBegan,
+	})
+	co = &po.coq[len(po.coq)-1] // do NOT use `ql` here, that's outdated if last co is a ho co
+
+	return
 }
 
-func (po *postingEnd) coAssertSender(co Conver) {
+func (po *postingEnd) coAssertSender(co *baseCo) {
 	// no sync, use thread local cache should be fairly okay
 	ql := len(po.coq)
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != po.coq[ql-1] {
+	if co != &po.coq[ql-1] {
 		panic(errors.New("co mismatch coq tail"))
 	}
 }
 
-func (po *postingEnd) coPeek() (co Conver) {
+func (po *postingEnd) coPeek() (co *baseCo) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -116,22 +148,22 @@ func (po *postingEnd) coPeek() (co Conver) {
 		panic("coq empty")
 	}
 
-	co = po.coq[0]
+	co = &po.coq[0]
 	return
 }
 
-func (po *postingEnd) coAssertReceiver(co Conver) {
+func (po *postingEnd) coAssertReceiver(co *baseCo) {
 	// no sync, use thread local cache should be fairly okay
 	ql := len(po.coq)
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != po.coq[0] {
+	if co != &po.coq[0] {
 		panic(errors.New("co mismatch coq head"))
 	}
 }
 
-func (po *postingEnd) coDequeue() (co Conver) {
+func (po *postingEnd) coDequeue() (co *baseCo) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -140,25 +172,15 @@ func (po *postingEnd) coDequeue() (co Conver) {
 		panic("coq empty")
 	}
 
-	co = po.coq[0]
+	co = &po.coq[0]
 	po.coq = po.coq[1:]
 	return
 }
 
-func (po *postingEnd) Co(receivingHo HostingEnd) (co *PoCo, err error) {
-	ho, ok := receivingHo.(*hostingEnd)
-	if !ok && receivingHo != nil {
-		panic("bad ho type")
-	}
-	co = &PoCo{
-		po:        po,
-		ho:        ho,
-		ended:     make(chan struct{}),
-		respBegin: make(chan struct{}),
-	}
-	po.coEnqueue(co)
+func (po *postingEnd) Co() (co *PoCo, err error) {
+	co = (*PoCo)(po.coEnqueue(""))
 
-	_, err = po.wire.SendPacket(co.CoID(), "co_begin")
+	_, err = po.wire.SendPacket(co.CoSeq(), "co_begin")
 	if err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
 		po.Disconnect(errReason, false)
@@ -175,7 +197,7 @@ func (po *postingEnd) RemoteAddr() net.Addr {
 
 func (po *postingEnd) Notif(code string) (err error) {
 	var co *PoCo
-	if co, err = po.Co(nil); err != nil {
+	if co, err = po.Co(); err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
 		po.Disconnect(errReason, false)
 		return
@@ -192,7 +214,7 @@ func (po *postingEnd) Notif(code string) (err error) {
 
 func (po *postingEnd) NotifData(code string, buf []byte) (err error) {
 	var co *PoCo
-	if co, err = po.Co(nil); err != nil {
+	if co, err = po.Co(); err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
 		po.Disconnect(errReason, false)
 		return

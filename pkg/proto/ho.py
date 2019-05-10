@@ -218,7 +218,7 @@ HBI {self.net_ident} disconnecting due to error:
                 await self.disconnect(exc)
                 return
 
-    async def _ack_co_begin(self, coid: str):
+    async def _ack_co_begin(self, co_seq: str):
         if self.co is not None:
             raise asyncio.InvalidStateError("Unclean co_begin!")
 
@@ -230,14 +230,14 @@ HBI {self.net_ident} disconnecting due to error:
                 break
             await tail_co.wait_ended()
 
-        co = HoCo(self, coid)
+        co = HoCo(self, co_seq)
         coq.append(co)
         self.co = co
-        await po._send_text(coid, b"co_ack_begin")
+        await po._send_text(co_seq, b"co_ack_begin")
 
-    async def _ack_co_end(self, coid: str):
+    async def _ack_co_end(self, co_seq: str):
         co = self.co
-        if co.coid != coid:
+        if co.co_seq != co_seq:
             raise asyncio.InvalidStateError("Mismatch co_end!")
 
         po = self.po
@@ -245,21 +245,21 @@ HBI {self.net_ident} disconnecting due to error:
         tail_co = coq.pop()
         assert co is tail_co, "ho co not tail of po's coq ?!"
 
-        co._send_done_fut.set_result(coid)
-        await po._send_text(coid, b"co_ack_end")
+        co._send_done_fut.set_result(co_seq)
+        await po._send_text(co_seq, b"co_ack_end")
         self.co = None
 
-    async def _co_begin_acked(self, coid: str):
+    async def _co_begin_acked(self, co_seq: str):
         co = self.po._coq[0]
-        if co.coid != coid:
-            raise asyncio.InvalidStateError(f"Mismatch coid!")
-        co._begin_acked(coid)
+        if co.co_seq != co_seq:
+            raise asyncio.InvalidStateError(f"Mismatch co_seq!")
+        co._begin_acked(co_seq)
 
-    async def _co_end_acked(self, coid: str):
+    async def _co_end_acked(self, co_seq: str):
         co = self.po._coq.popleft()
-        if co.coid != coid:
-            raise asyncio.InvalidStateError(f"Mismatch coid!")
-        co._end_acked(coid)
+        if co.co_seq != co_seq:
+            raise asyncio.InvalidStateError(f"Mismatch co_seq!")
+        co._end_acked(co_seq)
 
     async def _co_send_back(self, obj):
         if inspect.isawaitable(obj):

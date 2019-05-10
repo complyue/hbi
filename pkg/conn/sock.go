@@ -50,8 +50,7 @@ func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPList
 		netIdent := wire.NetIdent()
 		glog.V(1).Infof("New HBI connection accepted: %s", netIdent)
 
-		po := proto.NewPostingEnd(wire)
-		ho := proto.NewHostingEnd(he, po, wire)
+		po, ho := proto.NewConnection(he, wire)
 
 		if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
 			func() {
@@ -103,8 +102,7 @@ func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.Host
 	netIdent := wire.NetIdent()
 	glog.V(1).Infof("New HBI connection established: %s", netIdent)
 
-	po = proto.NewPostingEnd(wire)
-	ho = proto.NewHostingEnd(he, po, wire)
+	po, ho = proto.NewConnection(he, wire)
 
 	if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
 		func() {

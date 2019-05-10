@@ -13,6 +13,10 @@ __all__ = ["PostingEnd"]
 logger = get_logger(__name__)
 
 
+# start/end value of co id seqs, to have the string length between 3~10
+MIN_CO_SEQ, MAX_CO_SEQ = 101, 9999999999
+
+
 class PostingEnd:
     """
     HBI posting endpoint
@@ -27,6 +31,7 @@ class PostingEnd:
         "_disc_fut",
         "_send_ctrl",
         "_coq",
+        "_next_co_seq",
     )
 
     def __init__(self):
@@ -39,6 +44,7 @@ class PostingEnd:
 
         self._send_ctrl = SendCtrl()
         self._coq = deque()
+        self._next_co_seq = MIN_CO_SEQ
 
     @property
     def _connected_wire(self):
@@ -70,7 +76,12 @@ class PostingEnd:
             await self._send_data(bufs)
 
     def co(self):
-        co = PoCo(self)
+        next_co_seq = self._next_co_seq
+        co_seq = str(next_co_seq)
+        next_co_seq += 1
+        if next_co_seq > MAX_CO_SEQ:
+            self._next_co_seq = MIN_CO_SEQ
+        co = PoCo(self, co_seq)
         return co
 
     async def _send_code(self, code, wire_dir=b""):

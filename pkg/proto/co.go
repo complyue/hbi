@@ -2,16 +2,16 @@ package proto
 
 import (
 	"fmt"
-	"unsafe"
 
 	"github.com/complyue/hbi/pkg/errors"
 )
 
-// Conver is the conversation interface, there're basically 2 types of conversations:
-//   * Posting/Active conversation
-//   * Hosting/Passive conversation
+// Conver is the conversation interface.
+//  there're basically 2 types of conversations:
+//   * the active, posting conversation
+//   * the passive, hosting conversation
 type Conver interface {
-	CoID() string
+	CoSeq() string
 
 	SendCode(code string) (err error)
 	SendObj(code string) (err error)
@@ -25,44 +25,51 @@ type Conver interface {
 	Ended() chan struct{}
 }
 
-type PoCo struct {
-	po *postingEnd
-	ho *hostingEnd
+// the data structure for both conversation types
+type baseCo struct {
+	// common fields of ho/po co
+	ho    *hostingEnd
+	coSeq  string
+	ended chan struct{}
 
-	ended     chan struct{}
-	respBegin chan struct{}
+	// po co only fields
+	po        *postingEnd
+	respBegan chan struct{}
 }
 
-func (co *PoCo) CoID() string {
-	return fmt.Sprintf("%d", uintptr(unsafe.Pointer(co)))
+// PoCo is the active, posting conversation
+type PoCo baseCo
+
+func (co *PoCo) CoSeq() string {
+	return co.coSeq
 }
 
 func (co *PoCo) SendCode(code string) (err error) {
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 	_, err = co.po.wire.SendPacket(code, "")
 	return
 }
 
 func (co *PoCo) SendObj(code string) (err error) {
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 	_, err = co.po.wire.SendPacket(code, "co_recv")
 	return
 }
 
 func (co *PoCo) SendStream(data <-chan []byte) (err error) {
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 	_, err = co.po.wire.SendStream(data)
 	return
 }
 
 func (co *PoCo) SendData(buf []byte) (err error) {
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 	_, err = co.po.wire.SendData(buf)
 	return
 }
 
 func (co *PoCo) GetObj(code string) (obj interface{}, err error) {
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 	_, err = co.po.wire.SendPacket(code, "co_send")
 	obj, err = co.RecvObj()
 	return
@@ -70,22 +77,22 @@ func (co *PoCo) GetObj(code string) (obj interface{}, err error) {
 
 func (co *PoCo) RecvObj() (obj interface{}, err error) {
 	if co.ho == nil {
-		panic(errors.New("Receiving by a send-only conversation ?!"))
+		panic(errors.New("receiving by a send-only conversation"))
 	}
 
 	// must still be the sending conversation upon recv starting
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 
 	// wait co_ack_begin from peer
 	select {
 	case <-co.po.Done():
 		err = errors.New("posting endpoint closed")
 		return
-	case <-co.respBegin:
+	case <-co.respBegan:
 		// normal case
 	}
 	// must be the receiving conversation now
-	co.po.coAssertReceiver(co)
+	co.po.coAssertReceiver((*baseCo)(co))
 
 	obj, err = co.ho.recvObj()
 	return
@@ -93,22 +100,22 @@ func (co *PoCo) RecvObj() (obj interface{}, err error) {
 
 func (co *PoCo) RecvStream(data <-chan []byte) (err error) {
 	if co.ho == nil {
-		panic(errors.New("Receiving by a send-only conversation ?!"))
+		panic(errors.New("receiving by a send-only conversation"))
 	}
 
 	// must still be the sending conversation upon recv starting
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 
 	// wait co_ack_begin from peer
 	select {
 	case <-co.po.Done():
 		err = errors.New("posting endpoint closed")
 		return
-	case <-co.respBegin:
+	case <-co.respBegan:
 		// normal case
 	}
 	// must be the receiving conversation now
-	co.po.coAssertReceiver(co)
+	co.po.coAssertReceiver((*baseCo)(co))
 
 	_, err = co.ho.wire.RecvStream(data)
 	return
@@ -116,22 +123,22 @@ func (co *PoCo) RecvStream(data <-chan []byte) (err error) {
 
 func (co *PoCo) RecvData(buf []byte) (err error) {
 	if co.ho == nil {
-		panic(errors.New("Receiving by a send-only conversation ?!"))
+		panic(errors.New("receiving by a send-only conversation"))
 	}
 
 	// must still be the sending conversation upon recv starting
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 
 	// wait co_ack_begin from peer
 	select {
 	case <-co.po.Done():
 		err = errors.New("posting endpoint closed")
 		return
-	case <-co.respBegin:
+	case <-co.respBegan:
 		// normal case
 	}
 	// must be the receiving conversation now
-	co.po.coAssertReceiver(co)
+	co.po.coAssertReceiver((*baseCo)(co))
 
 	_, err = co.ho.wire.RecvData(buf)
 	return
@@ -142,77 +149,72 @@ func (co *PoCo) Close() {
 		return
 	}
 
-	co.po.coAssertSender(co)
+	co.po.coAssertSender((*baseCo)(co))
 
-	if _, err := co.po.wire.SendPacket(co.CoID(), "co_end"); err != nil {
+	if _, err := co.po.wire.SendPacket(co.coSeq, "co_end"); err != nil {
 		errReason := fmt.Sprintf("%+v", errors.RichError(err))
 		co.po.Disconnect(errReason, false)
 		panic(err)
 	}
 
-	co.po.coEnd(co, false)
+	co.po.coEnd((*baseCo)(co), false)
 }
 
 func (co *PoCo) Ended() chan struct{} {
 	return co.ended
 }
 
-type HoCo struct {
-	ho *hostingEnd
+// HoCo is the passive, hosting conversation
+type HoCo baseCo
 
-	coID string
-
-	ended chan struct{}
-}
-
-func (co *HoCo) CoID() string {
-	return co.coID
+func (co *HoCo) CoSeq() string {
+	return co.coSeq
 }
 
 func (co *HoCo) SendCode(code string) (err error) {
-	co.ho.po.coAssertSender(co)
+	co.ho.po.coAssertSender((*baseCo)(co))
 
 	_, err = co.ho.wire.SendPacket(code, "")
 	return
 }
 
 func (co *HoCo) SendObj(code string) (err error) {
-	co.ho.po.coAssertSender(co)
+	co.ho.po.coAssertSender((*baseCo)(co))
 
 	_, err = co.ho.wire.SendPacket(code, "co_recv")
 	return
 }
 
 func (co *HoCo) SendStream(data <-chan []byte) (err error) {
-	co.ho.po.coAssertSender(co)
+	co.ho.po.coAssertSender((*baseCo)(co))
 
 	_, err = co.ho.po.wire.SendStream(data)
 	return
 }
 
 func (co *HoCo) SendData(buf []byte) (err error) {
-	co.ho.po.coAssertSender(co)
+	co.ho.po.coAssertSender((*baseCo)(co))
 
 	_, err = co.ho.po.wire.SendData(buf)
 	return
 }
 
 func (co *HoCo) RecvObj() (result interface{}, err error) {
-	co.ho.po.coAssertReceiver(co)
+	co.ho.po.coAssertReceiver((*baseCo)(co))
 
 	result, err = co.ho.recvObj()
 	return
 }
 
 func (co *HoCo) RecvStream(data <-chan []byte) (err error) {
-	co.ho.po.coAssertReceiver(co)
+	co.ho.po.coAssertReceiver((*baseCo)(co))
 
 	_, err = co.ho.wire.RecvStream(data)
 	return
 }
 
 func (co *HoCo) RecvData(buf []byte) (err error) {
-	co.ho.po.coAssertReceiver(co)
+	co.ho.po.coAssertReceiver((*baseCo)(co))
 
 	_, err = co.ho.wire.RecvData(buf)
 	return
