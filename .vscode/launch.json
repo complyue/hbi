@@ -2,7 +2,8 @@
     "version": "0.2.0",
     "configurations": [
         {
-            // :( delve not supporting TUI programs yet
+            // delve not supporting TUI programs yet, you need to
+            // put the calls into banner script to debug them
             "name": "HBI interpreter - Go",
             "type": "go",
             "request": "launch",

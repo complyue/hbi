@@ -26,5 +26,13 @@ func main() {
 
 	interop.ExposeInterOpValues(he)
 
-	repl.ReplWith(he, "")
+	bannerScript := `
+ps1 = "HBI:> "
+print("\n### Exposed artifacts of current hosting env:\n")
+dir()
+`
+	// if debugged with delve, no interactive input can be sent in and as a workaround,
+	// add calls to suspicious stuff from above script to invoke the buggy cases.
+
+	repl.ReplWith(he, bannerScript)
 }
