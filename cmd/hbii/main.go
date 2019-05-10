@@ -26,5 +26,5 @@ func main() {
 
 	interop.ExposeInterOpValues(he)
 
-	repl.ReplWith(he)
+	repl.ReplWith(he, "")
 }
