@@ -116,9 +116,9 @@ func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, Hosting
 				if ho.co == nil || ho.co.coSeq != pkt.Payload {
 					panic("ho co mismatch")
 				}
-				ho.po.coAssertSender((*baseCo)(ho.co))
+				ho.po.coAssertSender((*coState)(ho.co))
 
-				ho.po.coEnd((*baseCo)(ho.co), true)
+				ho.po.coEnd((*coState)(ho.co), true)
 
 				if _, err = ho.po.wire.SendPacket(pkt.Payload, "co_ack_end"); err != nil {
 					trySendPeerError = false

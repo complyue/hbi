@@ -46,12 +46,12 @@ type postingEnd struct {
 	// increamental record for non-repeating conversation ID sequence
 	nextCoSeq int
 	// conversation queue to serialize sending activities
-	coq []baseCo
+	coq []coState
 	// to guard access to `nextCoSeq/coq`
 	muCoq sync.Mutex
 }
 
-func (po *postingEnd) coEnd(co *baseCo, popOff bool) {
+func (po *postingEnd) coEnd(co *coState, popOff bool) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -72,7 +72,7 @@ func (po *postingEnd) coEnd(co *baseCo, popOff bool) {
 	}
 }
 
-func (po *postingEnd) coEnqueue(coSeq string) (co *baseCo) {
+func (po *postingEnd) coEnqueue(coSeq string) (co *coState) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -117,7 +117,7 @@ func (po *postingEnd) coEnqueue(coSeq string) (co *baseCo) {
 		respBegan = make(chan struct{})
 	}
 
-	po.coq = append(po.coq, baseCo{
+	po.coq = append(po.coq, coState{
 		// common fields
 		ho: po.ho, coSeq: coSeq, ended: make(chan struct{}),
 		// po co only fields
@@ -128,7 +128,7 @@ func (po *postingEnd) coEnqueue(coSeq string) (co *baseCo) {
 	return
 }
 
-func (po *postingEnd) coAssertSender(co *baseCo) {
+func (po *postingEnd) coAssertSender(co *coState) {
 	// no sync, use thread local cache should be fairly okay
 	ql := len(po.coq)
 	if ql < 1 {
@@ -139,7 +139,7 @@ func (po *postingEnd) coAssertSender(co *baseCo) {
 	}
 }
 
-func (po *postingEnd) coPeek() (co *baseCo) {
+func (po *postingEnd) coPeek() (co *coState) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
@@ -152,7 +152,7 @@ func (po *postingEnd) coPeek() (co *baseCo) {
 	return
 }
 
-func (po *postingEnd) coAssertReceiver(co *baseCo) {
+func (po *postingEnd) coAssertReceiver(co *coState) {
 	// no sync, use thread local cache should be fairly okay
 	ql := len(po.coq)
 	if ql < 1 {
@@ -163,7 +163,7 @@ func (po *postingEnd) coAssertReceiver(co *baseCo) {
 	}
 }
 
-func (po *postingEnd) coDequeue() (co *baseCo) {
+func (po *postingEnd) coDequeue() (co *coState) {
 	po.muCoq.Lock()
 	defer po.muCoq.Unlock()
 
