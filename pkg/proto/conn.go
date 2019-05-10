@@ -2,6 +2,7 @@ package proto
 
 import (
 	"fmt"
+	"io"
 
 	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
@@ -11,6 +12,7 @@ import (
 
 // NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
 func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, HostingEnd) {
+	netIdent := wire.NetIdent()
 
 	// the posting endpoint always gets created, as hosting-only connections can rarely be useful.
 	// even if a connection will never be used to post sth out, having a posting endpoint is no harm.
@@ -45,6 +47,51 @@ func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, Hosting
 	// will this create too much difficulty for GC ?
 	po.ho, ho.po = ho, po
 
+	var (
+		ok          bool
+		initFunc    InitMagicFunction
+		cleanupFunc CleanupMagicFunction
+	)
+
+	if initMagic := he.Get("__hbi_init__"); initMagic != nil {
+		if initFunc, ok = initMagic.(InitMagicFunction); !ok {
+			panic(errors.Errorf("Bad __hbi_init__() type: %T", initMagic))
+		}
+	}
+
+	if cleanupMagic := he.Get("__hbi_cleanup__"); cleanupMagic != nil {
+		if cleanupFunc, ok = cleanupMagic.(CleanupMagicFunction); !ok {
+			panic(errors.Errorf("Bad __hbi_cleanup__() type: %T", cleanupMagic))
+		}
+	}
+
+	if initFunc != nil {
+		func() {
+			defer func() {
+				if e := recover(); e != nil {
+					err := errors.RichError(e)
+					errReason := fmt.Sprintf("init callback failed: %+v", err)
+
+					ho.Disconnect(errReason, true)
+
+					if cleanupFunc != nil {
+						func() {
+							defer func() {
+								if e := recover(); e != nil {
+									glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, err)
+								}
+							}()
+
+							cleanupFunc(err)
+						}()
+					}
+				}
+			}()
+
+			initFunc(po, ho)
+		}()
+	}
+
 	// run landing loop in a dedicated goroutine
 	go func() {
 		var (
@@ -70,6 +117,19 @@ func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, Hosting
 				if glog.V(1) {
 					glog.Infof("HBI %s landing loop stopped.", ho.netIdent)
 				}
+				ho.Close()
+			}
+
+			if cleanupFunc != nil {
+				func() {
+					defer func() {
+						if e := recover(); e != nil {
+							glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, err)
+						}
+					}()
+
+					cleanupFunc(err)
+				}()
 			}
 		}()
 
@@ -77,6 +137,10 @@ func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, Hosting
 
 			pkt, err = wire.RecvPacket()
 			if err != nil {
+				if err == io.EOF {
+					// normal case for peer closed connection
+					err = nil
+				}
 				return
 			}
 			var result interface{}

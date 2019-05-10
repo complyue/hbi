@@ -126,24 +126,16 @@ func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 	}
 }
 
-func (ho *hostingEnd) Cancel(err error) {
-	if ho.CancellableContext.Cancelled() {
-		// already cancelled
-		return
-	}
-
-	var errReason string
-	if err != nil {
-		errReason = fmt.Sprintf("%+v", errors.RichError(err))
-	}
-
-	ho.Disconnect(errReason, true)
-}
-
 func (ho *hostingEnd) Disconnect(errReason string, trySendPeerError bool) {
 	defer ho.wire.Disconnect()
 
-	ho.CancellableContext.Cancel(errors.New(errReason))
+	if !ho.CancellableContext.Cancelled() {
+		var err error
+		if len(errReason) > 0 {
+			err = errors.New(errReason)
+		}
+		ho.CancellableContext.Cancel(err)
+	}
 
 	ho.po.Disconnect(errReason, trySendPeerError)
 }

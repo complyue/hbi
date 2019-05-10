@@ -125,7 +125,7 @@ func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 			continue // ignore unexported field
 		}
 		if sf.Anonymous { // expose methods of embeded field struct
-			he.ExposeReactor(fv.Interface())
+			he.ExposeReactor(fv.Addr().Interface())
 			continue
 		}
 		// expose field getter/setter func

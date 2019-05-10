@@ -1,7 +1,6 @@
 package conn
 
 import (
-	"fmt"
 	"net"
 
 	details "github.com/complyue/hbi/pkg/_details"
@@ -50,36 +49,7 @@ func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPList
 		netIdent := wire.NetIdent()
 		glog.V(1).Infof("New HBI connection accepted: %s", netIdent)
 
-		po, ho := proto.NewConnection(he, wire)
-
-		if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
-			func() {
-				defer func() {
-					if e := recover(); e != nil {
-						err = errors.RichError(e)
-						errReason := fmt.Sprintf("init callback failed: %+v", err)
-						ho.Disconnect(errReason, true)
-					}
-				}()
-
-				initMagic(po, ho)
-			}()
-		}
-
-		if cleanupMagic, ok := he.Get("__hbi_cleanup__").(proto.CleanupMagicFunction); ok {
-			go func() {
-				defer func() {
-					if e := recover(); e != nil {
-						glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, errors.RichError(e))
-					}
-				}()
-
-				<-ho.Done()
-
-				cleanupMagic(ho.Err())
-			}()
-		}
-
+		proto.NewConnection(he, wire)
 	}
 }
 
@@ -103,34 +73,6 @@ func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.Host
 	glog.V(1).Infof("New HBI connection established: %s", netIdent)
 
 	po, ho = proto.NewConnection(he, wire)
-
-	if initMagic, ok := he.Get("__hbi_init__").(proto.InitMagicFunction); ok {
-		func() {
-			defer func() {
-				if e := recover(); e != nil {
-					err = errors.RichError(e)
-					errReason := fmt.Sprintf("init callback failed: %+v", err)
-					ho.Disconnect(errReason, true)
-				}
-			}()
-
-			initMagic(po, ho)
-		}()
-	}
-
-	if cleanupMagic, ok := he.Get("__hbi_cleanup__").(proto.CleanupMagicFunction); ok {
-		go func() {
-			defer func() {
-				if e := recover(); e != nil {
-					glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, errors.RichError(e))
-				}
-			}()
-
-			<-ho.Done()
-
-			cleanupMagic(ho.Err())
-		}()
-	}
 
 	return
 }

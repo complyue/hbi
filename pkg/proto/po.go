@@ -234,33 +234,25 @@ func (po *postingEnd) NotifData(code string, buf []byte) (err error) {
 	return
 }
 
-func (po *postingEnd) Cancel(err error) {
-	if po.CancellableContext.Cancelled() {
-		// already cancelled
-		return
-	}
-
-	var errReason string
-	if err != nil {
-		errReason = fmt.Sprintf("%+v", errors.RichError(err))
-	}
-
-	po.Disconnect(errReason, true)
-}
-
 func (po *postingEnd) Disconnect(errReason string, trySendPeerError bool) {
 	defer po.wire.Disconnect()
 
-	alreadyCancelled := po.CancellableContext.Cancelled()
-	alreadyErr := po.Err()
-	po.CancellableContext.Cancel(errors.New(errReason))
+	if len(errReason) > 0 {
+		if !po.CancellableContext.Cancelled() {
+			po.CancellableContext.Cancel(errors.New(errReason))
+		}
+	} else if po.CancellableContext.Cancelled() {
+		if err := po.CancellableContext.Err(); err != nil {
+			errReason = fmt.Sprintf("Posting cancelled due to: %+v", errors.RichError(err))
+		}
+	} else {
+		po.CancellableContext.Cancel(nil)
+	}
 
-	if errReason != "" {
+	if len(errReason) > 0 {
 		glog.Errorf("HBI %s disconnecting due to error: %s", po.netIdent, errReason)
 		if trySendPeerError {
-			if alreadyCancelled {
-				glog.Warningf("Not sending peer error as po already cancelled because: %+v", alreadyErr)
-			} else if _, e := po.wire.SendPacket(errReason, "err"); e != nil {
+			if _, e := po.wire.SendPacket(errReason, "err"); e != nil {
 				glog.Warningf("Failed sending peer error %s - %+v", errReason, errors.RichError(e))
 			}
 		}
