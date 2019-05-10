@@ -5,7 +5,6 @@ import (
 	"net"
 	"sync"
 
-	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/golang/glog"
 )
@@ -38,7 +37,7 @@ type postingEnd struct {
 	CancellableContext
 
 	ho   *hostingEnd
-	wire details.HBIWire
+	wire HBIWire
 
 	netIdent   string
 	remoteAddr net.Addr

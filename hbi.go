@@ -1,9 +1,9 @@
 package hbi
 
 import (
-	"github.com/complyue/hbi/pkg/conn"
 	"github.com/complyue/hbi/pkg/he"
 	"github.com/complyue/hbi/pkg/proto"
+	"github.com/complyue/hbi/pkg/sock"
 )
 
 type (
@@ -16,6 +16,6 @@ type (
 var (
 	NewHostingEnv = he.NewHostingEnv
 
-	ServeTCP = conn.ServeTCP
-	DialTCP  = conn.DialTCP
+	ServeTCP = sock.ServeTCP
+	DialTCP  = sock.DialTCP
 )

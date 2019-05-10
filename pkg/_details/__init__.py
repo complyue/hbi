@@ -3,7 +3,6 @@ from .buflist import *
 from .bytesbuf import *
 from .packet import *
 from .sendctrl import *
-from .wire import *
 
 __all__ = [
 
@@ -21,8 +20,5 @@ __all__ = [
 
     # exports from .sendctrl
     'SendCtrl',
-
-    # exports from .wire
-    'SocketWire',
 
 ]

@@ -1,16 +1,13 @@
 from .aio import *
-from .conn import *
 from .he import *
 from .log import *
 from .proto import *
+from .sock import *
 
 __all__ = [
 
     # exports from .aio
     'CancellableQueue', 'handle_signals', 'SyncVar',
-
-    # exports from .conn
-    'HBIC', 'HBIS',
 
     # exports from .he
     'run_in_env',
@@ -20,5 +17,8 @@ __all__ = [
 
     # exports from .proto
     'Conver', 'HostingEnd', 'PostingEnd',
+
+    # exports from .sock
+    'HBIC', 'HBIS',
 
 ]

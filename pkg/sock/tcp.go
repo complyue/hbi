@@ -1,4 +1,4 @@
-package details
+package sock
 
 import (
 	"fmt"
@@ -6,25 +6,78 @@ import (
 	"net"
 	"strings"
 
+	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
+	"github.com/complyue/hbi/pkg/he"
+	"github.com/complyue/hbi/pkg/proto"
 	"github.com/golang/glog"
 )
 
-// HBIWire is the interface an HBI wire protocol needs to implement
-type HBIWire interface {
-	NetIdent() string
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
+// ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
+// hosting env created from the `heFactory` function.
+//
+// `cb` will be called with the created `*net.TCPListener`, it's handful to specify port as 0,
+// and receive the actual port from the cb.
+//
+// This func won't return until the listener is closed.
+func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPListener)) (err error) {
+	var raddr *net.TCPAddr
+	raddr, err = net.ResolveTCPAddr("tcp", addr)
+	if nil != err {
+		glog.Errorf("addr error: %+v", errors.RichError(err))
+		return
+	}
+	var listener *net.TCPListener
+	listener, err = net.ListenTCP("tcp", raddr)
+	if err != nil {
+		glog.Errorf("listen error: %+v", errors.RichError(err))
+		return
+	}
+	if cb != nil {
+		cb(listener)
+	}
 
-	SendPacket(payload, wireDir string) (n int64, err error)
-	SendData(buf []byte) (n int64, err error)
-	SendStream(data <-chan []byte) (n int64, err error)
+	for {
+		var conn *net.TCPConn
+		conn, err = listener.AcceptTCP()
+		if nil != err {
+			glog.Errorf("accept error: %+v", errors.RichError(err))
+			return
+		}
 
-	RecvPacket() (packet *Packet, err error)
-	RecvData(buf []byte) (n int64, err error)
-	RecvStream(data <-chan []byte) (n int64, err error)
+		// todo DoS react
+		he := heFactory()
 
-	Disconnect()
+		wire := NewTCPWire(conn)
+		netIdent := wire.NetIdent()
+		glog.V(1).Infof("New HBI connection accepted: %s", netIdent)
+
+		proto.NewConnection(he, wire)
+	}
+}
+
+// DialTCP connects to specified remote address (host:port), react with specified hosting env.
+//
+// The returned `po` is used to send code & data to remote peer for hosted landing.
+func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
+	raddr, err := net.ResolveTCPAddr("tcp", addr)
+	if nil != err {
+		glog.Errorf("addr error: %+v", errors.RichError(err))
+		return
+	}
+	conn, err := net.DialTCP("tcp", nil, raddr)
+	if nil != err {
+		glog.Errorf("conn error: %+v", errors.RichError(err))
+		return
+	}
+
+	wire := NewTCPWire(conn)
+	netIdent := wire.NetIdent()
+	glog.V(1).Infof("New HBI connection established: %s", netIdent)
+
+	po, ho = proto.NewConnection(he, wire)
+
+	return
 }
 
 // TCPWire is HBI wire protocol over a plain tcp socket.
@@ -62,7 +115,7 @@ func (wire *TCPWire) SendPacket(payload, wireDir string) (n int64, err error) {
 				glog.Error(errors.RichError(err))
 			} else {
 				glog.Infof("HBI wire %s sent pkt %d:\n%+v\n",
-					wire.netIdent, n, Packet{WireDir: wireDir, Payload: payload})
+					wire.netIdent, n, proto.Packet{WireDir: wireDir, Payload: payload})
 			}
 		}()
 	}
@@ -131,7 +184,7 @@ func (wire *TCPWire) SendData(buf []byte) (n int64, err error) {
 }
 
 // RecvPacket receives next packet from peer endpoint.
-func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
+func (wire *TCPWire) RecvPacket() (packet *proto.Packet, err error) {
 	if glog.V(3) {
 		defer func() {
 			if packet != nil {
@@ -139,11 +192,10 @@ func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
 			}
 		}()
 	}
-	const MaxHeaderLen = 60
 	var (
 		wireDir, payload string
 		n, start, newLen int
-		hdrBuf           = make([]byte, 0, MaxHeaderLen)
+		hdrBuf           = make([]byte, 0, details.MaxHeaderLen)
 		payloadBuf       []byte
 	)
 
@@ -225,8 +277,8 @@ func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
 		if payloadBuf != nil {
 			break
 		}
-		if newLen >= MaxHeaderLen {
-			err = errors.New(fmt.Sprintf("No header within first %v bytes!", MaxHeaderLen))
+		if newLen >= details.MaxHeaderLen {
+			err = errors.New(fmt.Sprintf("No header within first %v bytes!", details.MaxHeaderLen))
 			return
 		}
 		if err == io.EOF {
@@ -252,7 +304,7 @@ func (wire *TCPWire) RecvPacket() (packet *Packet, err error) {
 	}
 	payload = string(payloadBuf)
 
-	packet = &Packet{WireDir: wireDir, Payload: payload}
+	packet = &proto.Packet{WireDir: wireDir, Payload: payload}
 	if err == io.EOF {
 		// clear EOF if got a complete packet.
 		// todo what if the underlying Reader not tolerating our next read passing EOF

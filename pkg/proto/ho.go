@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 
-	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/complyue/hbi/pkg/he"
 	"github.com/golang/glog"
@@ -35,7 +34,7 @@ type hostingEnd struct {
 
 	he *he.HostingEnv
 
-	wire details.HBIWire
+	wire HBIWire
 
 	netIdent  string
 	localAddr net.Addr
@@ -72,7 +71,7 @@ func (ho *hostingEnd) Co() *HoCo {
 
 func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 	var (
-		pkt *details.Packet
+		pkt *Packet
 	)
 
 	defer func() {

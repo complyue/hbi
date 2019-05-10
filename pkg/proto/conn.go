@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"io"
 
-	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/complyue/hbi/pkg/he"
 	"github.com/golang/glog"
 )
 
 // NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
-func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, HostingEnd) {
+func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
 	netIdent := wire.NetIdent()
 
 	// the posting endpoint always gets created, as hosting-only connections can rarely be useful.
@@ -95,7 +94,7 @@ func NewConnection(he *he.HostingEnv, wire details.HBIWire) (PostingEnd, Hosting
 	// run landing loop in a dedicated goroutine
 	go func() {
 		var (
-			pkt              *details.Packet
+			pkt              *Packet
 			err              error
 			trySendPeerError = true
 		)
