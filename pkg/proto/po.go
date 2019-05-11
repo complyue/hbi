@@ -100,8 +100,11 @@ func (po *postingEnd) coEnqueue(coSeq string) (co *coState) {
 		}()
 	}
 
-	// this'll be kept nil for ho co, only assigned for po co
-	var respBegan chan struct{}
+	// these'll be kept nil for ho co, only assigned for po co
+	var (
+		respBegan chan struct{}
+		respObj   chan interface{}
+	)
 
 	if len(coSeq) > 0 {
 		// creating a new ho co with coSeq received from peer
@@ -112,15 +115,16 @@ func (po *postingEnd) coEnqueue(coSeq string) (co *coState) {
 		if po.nextCoSeq > maxCoSeq {
 			po.nextCoSeq = minCoSeq
 		}
-		// this is only used for a po co
+		// these are only used for a po co
 		respBegan = make(chan struct{})
+		respObj = make(chan interface{})
 	}
 
 	po.coq = append(po.coq, coState{
 		// common fields
 		ho: po.ho, coSeq: coSeq, ended: make(chan struct{}),
 		// po co only fields
-		po: po, respBegan: respBegan,
+		respBegan: respBegan, respObj: respObj,
 	})
 	co = &po.coq[len(po.coq)-1] // do NOT use `ql` here, that's outdated if last co is a ho co
 

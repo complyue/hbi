@@ -163,7 +163,30 @@ func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
 
 			case "co_recv":
 
-				panic("co_recv invaded landing loop")
+				if ho.co != nil { // in case the ho co should receive an object, there should be
+					// the receiving-code running nested in `ho.Exec()` calls from either of the
+					// 2 cases above, and the receiving-code should call `HoCo.RecvObj()` which in
+					// turn calls `co.recvObj()` where a nested landing loop will run.
+					err = errors.New("an obj sent to the ho co but no prior receiving-code running")
+					return
+					// todo: should we use an app queue to allow objects be sent prior to the receiving-code?
+
+					// that behavior is supported by the python/asyncio implementation as a side-effect,
+					// coz reading from asyncio.transport is pushed.
+					// while golang tcp transport is read as per app's decision, the app queue is not necessary.
+
+					// for binary data/stream to be received, there's no way for data comes prior to
+					// receiving-code, it's the receiving-code's responsibility to know correct data/stream
+					// length. so it's natural to expect objects (landed by code) to be sent then received
+					// the same way.
+				}
+
+				// no ho co means the sent object meant to be received by
+				recvCo := ho.po.coPeek()
+				if result, err = ho.Exec(pkt.Payload); err != nil {
+					return
+				}
+				recvCo.respObj <- result
 
 			case "co_begin":
 
@@ -197,6 +220,11 @@ func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
 					panic("mismatch co_ack_begin")
 				}
 
+				// signal start of response to the head po co.
+				// this is crucial in case the po co expects binary data/stream come
+				// before any textual code packet if any at all. and in other cases, i.e.
+				// no response expected at all, or receiving-code (in form of textual
+				// code packet) come first, this is of no use.
 				close(recvCo.respBegan)
 
 			case "co_ack_end":
@@ -205,6 +233,8 @@ func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
 				if recvCo.coSeq != pkt.Payload {
 					panic("mismatch co_ack_end")
 				}
+
+				close(recvCo.respObj)
 
 			case "err":
 

@@ -4,7 +4,7 @@ from typing import *
 
 from ..log import *
 
-__all__ = ["Conver"]
+__all__ = ["Conver", "PoCo", "HoPo"]
 
 logger = get_logger(__name__)
 
@@ -36,69 +36,10 @@ class Conver:
     async def recv_data(self, bufs):
         raise NotImplementedError
 
-    def is_ended(self):
-        raise NotImplementedError
-
-    async def wait_ended(self):
-        await self._send_done_fut
-
-
-class HoCo(Conver):
-    """
-    Hosting Conversation
-
-    """
-
-    __slots__ = ("ho", "_co_seq", "_send_done_fut")
-
-    def __init__(self, ho, co_seq):
-        self.ho = ho
-        self._co_seq = co_seq
-
-        self._send_done_fut = asyncio.get_running_loop().create_future()
-
-    async def send_code(self, code):
-        ho = self.ho
-        if self is not ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-
-        await po._send_code(code)
-
-    async def send_obj(self, code):
-        ho = self.ho
-        if self is not ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-
-        await po._send_code(code, b"co_recv")
-
-    async def send_data(self, bufs):
-        ho = self.ho
-        if self is not ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-
-        await po._send_data(bufs)
-
-    async def recv_obj(self):
-        ho = self.ho
-        if self is not ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
-
-        return await ho._recv_obj()
-
-    async def recv_data(self, bufs):
-        ho = self.ho
-        if self is not ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
-
-        await ho._recv_data(bufs)
-
-    def is_ended(self):
+    def is_closed(self):
         return self._send_done_fut.done()
 
-    async def wait_ended(self):
+    async def wait_closed(self):
         await self._send_done_fut
 
 
@@ -139,9 +80,9 @@ class PoCo(Conver):
         coq = po._coq
         while coq:
             tail_co = coq[-1]
-            if tail_co.is_ended():
+            if tail_co.is_closed():
                 break
-            await tail_co.wait_ended()
+            await tail_co.wait_closed()
 
         self._begin_acked_fut = asyncio.get_running_loop().create_future()
 
@@ -166,7 +107,7 @@ class PoCo(Conver):
                 raise asyncio.InvalidStateError("co_end sent already!")
 
             po = self.po
-            assert self is po._coq[-1], "co not tail of po's coq ?!"
+            assert self is po._coq[-1], "co not current sender?!"
 
             self._end_acked_fut = asyncio.get_running_loop().create_future()
 
@@ -194,12 +135,6 @@ class PoCo(Conver):
         finally:
             if not self._send_done_fut.done():
                 self._send_done_fut.set_exception(RuntimeError("Abnormal Co End"))
-
-    def is_ended(self):
-        return self._send_done_fut.done()
-
-    async def wait_ended(self):
-        await self._send_done_fut
 
     def _begin_acked(self, co_seq):
         if self.co_seq != co_seq:
@@ -241,7 +176,7 @@ class PoCo(Conver):
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
         po = self.po
-        assert self is po._coq[-1], "co not tail of po's coq ?!"
+        assert self is po._coq[-1], "co not current sender?!"
 
         await po._send_code(code)
 
@@ -250,7 +185,7 @@ class PoCo(Conver):
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
         po = self.po
-        assert self is po._coq[-1], "co not tail of po's coq ?!"
+        assert self is po._coq[-1], "co not current sender?!"
 
         await po._send_code(code, b"co_recv")
 
@@ -259,7 +194,7 @@ class PoCo(Conver):
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
         po = self.po
-        assert self is po._coq[-1], "co not tail of po's coq ?!"
+        assert self is po._coq[-1], "co not current sender?!"
 
         await po._send_data(bufs)
 
@@ -269,7 +204,7 @@ class PoCo(Conver):
         await self.response_begin()
 
         po = self.po
-        assert self is po._coq[0], "co not head of po's coq ?!"
+        assert self is po._coq[0], "co not current receiver?!"
 
         return await po._wire.ho._recv_obj()
 
@@ -279,16 +214,80 @@ class PoCo(Conver):
         await self.response_begin()
 
         po = self.po
-        assert self is po._coq[0], "co not head of po's coq ?!"
+        assert self is po._coq[0], "co not current receiver?!"
 
         await po._wire.ho._recv_data(bufs)
 
     async def get_obj(self, code):
+        """
+        Get result object of `code` landed at peer endpoint.
+
+        This is throughput killer really, try your best avoid using this,
+        though this is really convenient and intuitive to call.
+        
+        """
+
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
         po = self.po
-        assert self is po._coq[0], "co not head of po's coq ?!"
+        assert self is po._coq[-1], "co not current sender?!"
         await po._send_text(code, b"co_send")
 
         return await self.recv_obj()
+
+
+class HoCo(Conver):
+    """
+    Hosting Conversation
+
+    """
+
+    __slots__ = ("ho", "_co_seq", "_send_done_fut")
+
+    def __init__(self, ho, co_seq):
+        self.ho = ho
+        self._co_seq = co_seq
+
+        self._send_done_fut = asyncio.get_running_loop().create_future()
+
+    async def send_code(self, code):
+        ho = self.ho
+        if self is not ho.co:
+            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+        po = ho.po
+        assert self is po._coq[-1], "co not current sender?!"
+
+        await po._send_code(code)
+
+    async def send_obj(self, code):
+        ho = self.ho
+        if self is not ho.co:
+            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+        po = ho.po
+        assert self is po._coq[-1], "co not current sender?!"
+
+        await po._send_code(code, b"co_recv")
+
+    async def send_data(self, bufs):
+        ho = self.ho
+        if self is not ho.co:
+            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+        po = ho.po
+        assert self is po._coq[-1], "co not current sender?!"
+
+        await po._send_data(bufs)
+
+    async def recv_obj(self):
+        ho = self.ho
+        if self is not ho.co:
+            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+
+        return await ho._recv_obj()
+
+    async def recv_data(self, bufs):
+        ho = self.ho
+        if self is not ho.co:
+            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+
+        await ho._recv_data(bufs)

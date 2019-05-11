@@ -105,12 +105,13 @@ func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 		case "":
 
 			if _, err = ho.Exec(pkt.Payload); err != nil {
+				// land some other code before an object is sent for receiving, allow this behavior here.
 				return
 			}
 
 		case "co_send":
 
-			panic("co_send invaded recv loop")
+			panic(errors.New("peer issued co_send before sending an object expected by prior receiving-code"))
 
 		case "co_recv":
 
@@ -119,7 +120,7 @@ func (ho *hostingEnd) recvObj() (obj interface{}, err error) {
 
 		default:
 
-			panic("Unexpected packet")
+			panic(errors.Errorf("Unexpected packet: %+v", pkt))
 
 		}
 	}

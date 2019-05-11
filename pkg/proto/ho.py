@@ -6,7 +6,7 @@ from .._details import *
 from ..aio import *
 from ..he import *
 from ..log import *
-from .co import HoCo
+from .co import *
 
 __all__ = ["HostingEnd"]
 
@@ -59,7 +59,7 @@ class HostingEnd:
         self._horq = CancellableQueue(app_queue_size)
 
         # current hosting conversation
-        self.co = None
+        self.co: HoCo = None
 
     def is_connected(self):
         wire = self._wire
@@ -226,9 +226,9 @@ HBI {self.net_ident} disconnecting due to error:
         coq = po._coq
         while coq:
             tail_co = coq[-1]
-            if tail_co.is_ended():
+            if tail_co.is_closed():
                 break
-            await tail_co.wait_ended()
+            await tail_co.wait_closed()
 
         co = HoCo(self, co_seq)
         coq.append(co)

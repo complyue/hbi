@@ -6,7 +6,7 @@ from typing import *
 from .._details import *
 from .._details import SendCtrl
 from ..log import *
-from .co import PoCo
+from .co import *
 
 __all__ = ["PostingEnd"]
 
@@ -75,7 +75,7 @@ class PostingEnd:
             await self._send_code(code)
             await self._send_data(bufs)
 
-    def co(self):
+    def co(self) -> PoCo:
         next_co_seq = self._next_co_seq
         co_seq = str(next_co_seq)
         next_co_seq += 1
