@@ -162,18 +162,6 @@ class HBIC:
         if wire is None:
             raise asyncio.InvalidStateError("HBIC not wired yet!")
 
-        disc_fut = self._disc_fut
-        if disc_fut is not None:
-            if err_reason is not None:
-                logger.error(
-                    rf"""
-HBIC {self.net_ident} repeating disconnection due to error:
-{err_reason}
-""",
-                    stack_info=True,
-                )
-            return await disc_fut
-
         if err_reason is not None:
             logger.error(
                 rf"""
@@ -183,25 +171,25 @@ HBIC {self.net_ident} disconnecting due to error:
                 stack_info=True,
             )
 
-        disc_fut = self._disc_fut = asyncio.get_running_loop().create_future()
+        disc_fut = self._disc_fut
 
         exc = None  # exception used to cancel hosting task and landing thread
 
         hott = self._hott
-        if hott is not None and not hott.done():
-            if err_reaon is not None:
+        if hott is not None:
+            if err_reason is not None:
                 exc = asyncio.CancelledError(err_reason)
             else:
                 exc = asyncio.CancelledError("HBIC disconnected.")
-            hott.cancel(exc)
+            hott.throw(exc)
 
         lath = self._lath
         if lath is not None and not lath.done():
-            if err_reaon is not None:
+            if err_reason is not None:
                 exc = asyncio.CancelledError(err_reason)
             else:
                 exc = asyncio.CancelledError("HBIC disconnected.")
-            lath.cancel(exc)
+            lath._coro.throw(exc)
 
         try:
             if not wire.is_connected():
