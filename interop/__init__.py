@@ -9,6 +9,6 @@ from .interop import *
 __all__ = [
 
     # exports from .interop
-    'nil', 'true', 'false', 'null', 'nan', 'NaN', 'JSONObj', 'JSONArray', 'JSONStr',
+    'JSONObj', 'JSONArray', 'JSONStr', 'expose_interop_values',
 
 ]

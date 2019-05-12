@@ -61,7 +61,7 @@ class HostingEnv:
             name = func.__name__
         self._validate_expose_name(name)
         self._exposed_names.append(name)
-        self.globals_[name] = func
+        self._globals[name] = func
 
     def expose_ctor(self, ctor: type):
         if not callable(ctor):
@@ -72,12 +72,12 @@ class HostingEnv:
             raise TypeError(f"constructor has no name: {ctor!r}")
         self._validate_expose_name(name)
         self._exposed_names.append(name)
-        self.globals_[name] = func
+        self._globals[name] = ctor
 
     def expose_value(self, name: str, value: object):
         self._validate_expose_name(name)
         self._exposed_names.append(name)
-        self.globals_[name] = value
+        self._globals[name] = value
 
     def get(self, name: str) -> object:
         return self._globals.get(name, None)
@@ -149,9 +149,9 @@ def run_py(
                     last_expr.body = field_[1].pop().value
                 elif isinstance(le, (ast.FunctionDef, ast.ClassDef)):
                     last_def_name = le.name
-        exec(compile(ast_, src_name, "exec"), env, defs)
+        exec(compile(ast_, src_name, "exec"), globals_, locals_)
         if last_expr is not None:
-            return eval(compile(last_expr, src_name, "eval"), env, defs)
+            return eval(compile(last_expr, src_name, "eval"), globals_, locals_)
         elif last_def_name is not None:
             return defs[last_def_name]
         return None

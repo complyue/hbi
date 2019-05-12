@@ -1,25 +1,10 @@
 import json
-from math import nan
+
+from ..pkg.proto.ho import HostingEnv
 
 from collections import OrderedDict
 
-__all__ = [
-    "nil",
-    "true",
-    "false",
-    "null",
-    "nan",
-    "NaN",
-    "JSONObj",
-    "JSONArray",
-    "JSONStr",
-]
-
-nil = None
-true = True
-false = False
-null = None
-NaN = nan
+__all__ = ["JSONObj", "JSONArray", "JSONStr", "expose_interop_values"]
 
 
 class JSONObj(OrderedDict):
@@ -57,3 +42,25 @@ class JSONStr(str):
 
     def __str__(self):
         return self
+
+
+def expose_interop_values(he: HostingEnv):
+    globals_ = he.globals
+
+    exec(
+        rf"""
+from math import nan
+NaN = nan
+
+nil = None
+true = True
+false = False
+null = None
+""",
+        globals_,
+        globals_,
+    )
+
+    globals_["JSONObj"] = JSONObj
+    globals_["JSONArray"] = JSONArray
+    globals_["JSONStr"] = JSONStr

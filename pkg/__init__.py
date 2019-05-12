@@ -16,7 +16,7 @@ __all__ = [
     'root_logger', 'get_logger',
 
     # exports from .proto
-    'Conver', 'PoCo', 'HoPo', 'HBIC', 'HostingEnd', 'PostingEnd', 'HBIWire',
+    'Conver', 'PoCo', 'HoCo', 'HBIC', 'HostingEnd', 'PostingEnd', 'HBIWire',
 
     # exports from .sock
     'serve_socket', 'dial_socket',

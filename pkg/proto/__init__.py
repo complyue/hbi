@@ -7,7 +7,7 @@ from .wire import *
 __all__ = [
 
     # exports from .co
-    'Conver', 'PoCo', 'HoPo',
+    'Conver', 'PoCo', 'HoCo',
 
     # exports from .conn
     'HBIC',

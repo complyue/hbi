@@ -21,7 +21,7 @@ async def serve_socket(
     wire_buf_high=20 * 1024 * 1024,
     wire_buf_low=6 * 1024 * 1024,
     net_opts: Optional[dict] = None,
-) -> asyncio.Server:
+):
     if net_opts is None:
         net_opts = {}
 

@@ -19,17 +19,16 @@ class HostingEnd:
 
     """
 
-    __slots__ = ("hbic", "env", "po", "local_addr", "_co")
+    __slots__ = ("hbic", "env", "local_addr", "_co")
 
-    def __init__(self, hbic, env:, po):
+    def __init__(self, hbic, env):
         """
         App code should never create a hosting endpoint directly.
 
         """
 
-        self.hbic:HBICI = hbic
+        self.hbic: HBICI = hbic
         self.env: HostingEnv = env
-        self.po: PostingEnd = po
 
         self.local_addr = "<unwired>"
 

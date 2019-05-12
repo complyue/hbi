@@ -8,6 +8,7 @@ from .._details import *
 from ..aio import *
 from ..he import *
 from ..log import *
+from .co import *
 from .ho import *
 from .po import *
 
@@ -33,13 +34,13 @@ class HBIC:
         "_coq",
         "_next_co_seq",
         "packet_available",
-        "_hoth",
+        "_lath",
         "_hott",
     )
 
     def __init__(self, he: HostingEnv):
         self.po = PostingEnd(self)
-        self.ho = HostingEnd(self, he, po)
+        self.ho = HostingEnd(self, he)
 
         # the wire underlying for data transportation
         self.wire = None
@@ -69,11 +70,23 @@ class HBIC:
         co = PoCo(self, co_seq)
         return co
 
+    def is_connected(self):
+        if self._disc_fut.done():
+            return False
+        wire = self.wire
+        if wire is None:
+            return False
+        return wire.is_connected()
+
     async def wait_connected(self):
         await self._conn_fut
+        wire = self.wire
+        assert wire.is_connected()
 
     async def wait_disconnected(self):
         await self._disc_fut
+        wire = self.wire
+        assert wire is None or not wire.is_connected()
 
     def pause_sending(self):
         self._send_ctrl.obstruct()
@@ -82,9 +95,6 @@ class HBIC:
         self._send_ctrl.unleash()
 
     async def _send_text(self, code, wire_dir=b""):
-        if self._disc_fut is not None:
-            raise asyncio.InvalidStateError(f"HBIC {self.net_ident!s} disconnected.")
-
         if isinstance(code, bytes):
             payload = code
         elif isinstance(code, str):
@@ -104,9 +114,6 @@ class HBIC:
             raise
 
     async def _send_buffer(self, buf):
-        if self._disc_fut is not None:
-            raise asyncio.InvalidStateError(f"HBIC {self.net_ident!s} disconnected.")
-
         wire = self.wire
         assert wire.is_connected()
         try:
@@ -146,18 +153,7 @@ class HBIC:
                 yield from pull_from(boc1)
 
         for buf in pull_from(bufs):
-            # take receiving high watermark as reference for max chunk size
-            max_chunk_size = self._wire.wire_buf_high
-            remain_size = len(buf)
-            send_from_idx = 0
-            while remain_size > max_chunk_size:
-                await self._send_buffer(
-                    buf[send_from_idx : send_from_idx + max_chunk_size]
-                )
-                send_from_idx += max_chunk_size
-                remain_size -= max_chunk_size
-            if remain_size > 0:
-                await self._send_buffer(buf[send_from_idx:])
+            await self._send_buffer(buf)
 
     async def disconnect(
         self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
@@ -251,18 +247,18 @@ HBIC {self.net_ident} disconnecting due to error:
         assert self._lath is None, "landing thread created already ?!"
         self.packet_available.set()
 
-        def lath_done(lath):
-            assert lath.done()
-            exc = lath.exception()
-            if exc is not None:
+        async def run_lath():
+            try:
+                await self._landing_thread()
+            except Exception as exc:
                 logger.error(
-                    f"HBIC {self.net_ident!s} unexpected error in landing thread:\n{exc!s}"
+                    f"HBIC {self.net_ident!s} unexpected error in landing thread.",
+                    exc_info=True,
                 )
-                if wire.is_connected():
-                    wire.disconnect()
+            if wire.is_connected():
+                wire.disconnect()
 
-        lath = self._lath = asyncio.create_task(self._landing_thread())
-        lath.add_done_callback(lath_done)
+        lath = self._lath = asyncio.create_task(run_lath())
 
         self._conn_fut.set_result(None)
 
@@ -282,14 +278,12 @@ HBIC {self.net_ident} disconnecting due to error:
         self._send_ctrl.shutdown(exc)
 
         hott = self._hott
-        if hott is not None and not hott.done():
-            hott.cancel(exc)
+        if hott is not None:
+            hott.throw(exc)
 
         lath = self._lath
         if lath is not None and not lath.done():
-            lath.cancel(exc)
-
-        # TODO cancel each co's receiving queue
+            lath._coro.throw(exc)
 
         disc_fut = self._disc_fut
         if disc_fut is None:
@@ -308,11 +302,12 @@ HBIC {self.net_ident} disconnecting due to error:
 
         """
 
+        wire = self.wire
+
         po = self.po
         coq = self._coq
         ho = self.ho
         he = ho.env
-        wire = self.wire
 
         disc_reason = None
         try_send_peer_err = True
@@ -321,7 +316,7 @@ HBIC {self.net_ident} disconnecting due to error:
         init_magic = he.get("__hbi_init__")
         if init_magic is not None:
             try:
-                maybe_coro = init_magic(po, ho)
+                maybe_coro = init_magic(po=po, ho=ho)
                 if inspect.iscoroutine(maybe_coro):
                     await maybe_coro
             except Exception as exc:
@@ -333,7 +328,6 @@ HBIC {self.net_ident} disconnecting due to error:
         while disc_reason is None:
             hott = self._hott
             if hott is not None:  # clear last hosting task
-                assert hott.done(), "last hosting task still pending ?!"
                 self._hott = None
 
             try:
@@ -358,7 +352,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
             if "co_begin" == wire_dir:
 
-                assert ho.co is None, "unclean co_begin ?!"
+                assert ho._co is None, "unclean co_begin ?!"
                 co_seq = payload
                 while coq:
                     tail_co = coq[-1]
@@ -368,7 +362,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
                 co = HoCo(self, co_seq)
                 coq.append(co)
-                ho.co = co
+                ho._co = co
                 await self._send_text(co_seq, b"co_ack_begin")
 
             elif "" == wire_dir:
@@ -395,7 +389,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
             elif "co_recv" == wire_dir:
 
-                if ho.co is not None:  # pushing obj to a ho co
+                if ho._co is not None:  # pushing obj to a ho co
                     disc_reason = "co_recv without priori receiving code in landing"
                     break
 
@@ -418,7 +412,7 @@ HBIC {self.net_ident} disconnecting due to error:
             elif "co_end" == wire_dir:
 
                 co_seq = payload
-                co = ho.co
+                co = ho._co
                 assert co is not None, "ho co mismatch ?!"
                 if co.co_seq != co_seq:
                     raise asyncio.InvalidStateError("mismatch co_end")
@@ -427,8 +421,8 @@ HBIC {self.net_ident} disconnecting due to error:
                 assert co is tail_co, "ho co not tail of coq ?!"
 
                 co._send_done_fut.set_result(co_seq)
-                await po._send_text(co_seq, b"co_ack_end")
-                ho.co = None
+                await self._send_text(co_seq, b"co_ack_end")
+                ho._co = None
 
             elif "co_ack_begin" == wire_dir:
 
@@ -502,7 +496,7 @@ HBIC {self.net_ident} disconnecting due to error:
         cleanup_magic = he.get("__hbi_cleanup__")
         if cleanup_magic is not None:
             try:
-                maybe_coro = cleanup_magic(disc_reason)
+                maybe_coro = cleanup_magic(po=po, ho=ho, err_reason=disc_reason)
                 if inspect.iscoroutine(maybe_coro):
                     await maybe_coro
             except Exception:
@@ -514,7 +508,9 @@ HBIC {self.net_ident} disconnecting due to error:
             raise asyncio.InvalidStateError(
                 "_recv_one_obj() not called from the receiving code ?!"
             )
-        assert not receiving_hott.done(), "?!"
+
+        wire = self.wire
+        wire.resume_recv()
 
         # use up stack hott as a marker to indicate the desired obj not received yet,
         # this'll be set to the received obj once final result landed from a co_recv pkt.
@@ -523,7 +519,6 @@ HBIC {self.net_ident} disconnecting due to error:
         obj2hoco = receiving_hott
 
         he = ho.env
-        wire = self.wire
 
         disc_reason = None
         try_send_peer_err = True
@@ -618,7 +613,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
     def stop_landing(self) -> bool:  # return whether to keep wire for sending
         ho = self.ho
-        if ho.co is not None:
+        if ho._co is not None:
             # trigger disconnection
             asyncio.create_task(
                 self.disconnect(
@@ -641,8 +636,8 @@ HBIC {self.net_ident} disconnecting due to error:
         return True
 
     async def _recv_data(self, bufs):
-        wire = self._wire
-        wire._check_resume()
+        wire = self.wire
+        wire.resume_recv()
 
         fut = asyncio.get_running_loop().create_future()
 
@@ -669,7 +664,7 @@ HBIC {self.net_ident} disconnecting due to error:
             if chunk is None:
                 if not fut.done():
                     fut.set_exception(RuntimeError("HBIC disconnected"))
-                wire._end_offload(None, data_sink)
+                wire.end_offload(None, data_sink)
 
             try:
                 while True:
@@ -710,7 +705,7 @@ HBIC {self.net_ident} disconnecting due to error:
                             buf = None
                     except StopIteration as ret:
                         # all buffers in hierarchy filled, finish receiving
-                        wire._end_offload(chunk, data_sink)
+                        wire.end_offload(chunk, data_sink)
                         # resolve the future
                         if not fut.done():
                             fut.set_result(bufs)
@@ -725,6 +720,6 @@ HBIC {self.net_ident} disconnecting due to error:
                 if not fut.done():
                     fut.set_exception(exc)
 
-        wire._begin_offload(data_sink)
+        wire.begin_offload(data_sink)
 
         return await fut
