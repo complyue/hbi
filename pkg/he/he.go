@@ -8,6 +8,13 @@ import (
 	"github.com/complyue/hbi/pkg/errors"
 )
 
+// HostingEnv is the container of hbi artifacts, including:
+//   * functions
+//   * object constructors (special functions taking n args, returning 1 object)
+//   * value objects
+//   * reactor methods
+// These artifacts need to be explicitly exposed to a hosting environment,
+// to accomodate landing of peer scripting code.
 type HostingEnv struct {
 	ve       *vm.Env
 	exposure []string
@@ -21,18 +28,18 @@ func NewHostingEnv() *HostingEnv {
 	return he
 }
 
-// this needs not to be thread safe, should only be called from a single hosting goroutine
-func (he *HostingEnv) RunInEnv(code string, ctx context.Context) (result interface{}, err error) {
-	result, err = he.ve.ExecuteContext(ctx, code)
-	return
-}
-
 func (he *HostingEnv) AnkoEnv() *vm.Env {
 	return he.ve
 }
 
 func (he *HostingEnv) ExposedNames() []string {
 	return append([]string(nil), he.exposure...)
+}
+
+// this needs not to be thread safe, should only be called from a single hosting goroutine
+func (he *HostingEnv) RunInEnv(code string, ctx context.Context) (result interface{}, err error) {
+	result, err = he.ve.ExecuteContext(ctx, code)
+	return
 }
 
 func (he *HostingEnv) NameExposed(name string) bool {
