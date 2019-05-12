@@ -13,6 +13,13 @@ class Conver:
     """
     Abstract Conversation
 
+    All conversations can:
+      * push (send) code to peer for landing
+        * the landed result obj can be optionally received by its hosting conversation
+      * push data/stream to peer for receiving by its hosting conversation
+    
+    Only hosting conversation can receive data/stream.
+
     """
 
     __slots__ = ()
@@ -21,19 +28,26 @@ class Conver:
     def co_seq(self) -> str:
         return self._co_seq
 
-    async def send_code(self, code):
+    async def send_code(self, code: str):
         raise NotImplementedError
 
-    async def send_obj(self, code):
+    async def send_obj(self, code: str):
         raise NotImplementedError
 
-    async def send_data(self, bufs):
+    async def send_data(
+        self,
+        bufs: Union[
+            bytes,
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly,
+            # normally with a generator function call
+            Sequence[Union[bytes, bytearray, memoryview]],
+        ],
+    ):
         raise NotImplementedError
 
-    async def recv_obj(self):
-        raise NotImplementedError
-
-    async def recv_data(self, bufs):
+    async def recv_obj(self) -> object:
         raise NotImplementedError
 
     def is_closed(self):
@@ -50,20 +64,23 @@ class PoCo(Conver):
     """
 
     __slots__ = (
-        "po",
+        "hbic",
         "_co_seq",
         "_send_done_fut",
         "_begin_acked_fut",
         "_end_acked_fut",
+        "_roq",
     )
 
-    def __init__(self, po, co_seq):
-        self.po = po
+    def __init__(self, hbic, co_seq):
+        self.hbic = hbic
         self._co_seq = co_seq
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
         self._begin_acked_fut = None
         self._end_acked_fut = None
+
+        self._roq = asyncio.Queue(maxsize=1)
 
     async def __aenter__(self):
         await self.begin()
@@ -76,8 +93,8 @@ class PoCo(Conver):
         if self._begin_acked_fut is not None:
             raise asyncio.InvalidStateError("co_begin sent already!")
 
-        po = self.po
-        coq = po._coq
+        hbic = self.hbic
+        coq = hbic._coq
         while coq:
             tail_co = coq[-1]
             if tail_co.is_closed():
@@ -89,14 +106,9 @@ class PoCo(Conver):
         coq.append(self)
 
         try:
-            await po._send_text(self.co_seq, b"co_begin")
+            await hbic._send_text(self.co_seq, b"co_begin")
         except Exception as exc:
             self._begin_acked_fut.set_exception(exc)
-
-            err_msg = "Error sending co_begin: " + str(exc)
-            err_stack = "".join(traceback.format_exc())
-            err_reason = err_msg + "\n" + err_stack
-            await po.disconnect(err_reason)
             raise
 
     async def end(self):
@@ -106,19 +118,13 @@ class PoCo(Conver):
             if self._end_acked_fut is not None:
                 raise asyncio.InvalidStateError("co_end sent already!")
 
-            po = self.po
-            assert self is po._coq[-1], "co not current sender?!"
+            hbic = self.hbic
+            assert self is hbic._coq[-1], "co not current sender?!"
 
             self._end_acked_fut = asyncio.get_running_loop().create_future()
 
-            if not po.is_connected():
-                exc = RuntimeError("Co End After Disconnected")
-                self._end_acked_fut.set_exception(exc)
-                self._send_done_fut.set_exception(exc)
-                raise exc
-
             try:
-                await po._send_text(self.co_seq, b"co_end")
+                await hbic._send_text(self.co_seq, b"co_end")
 
                 self._send_done_fut.set_result(self.co_seq)
             except Exception as exc:
@@ -127,10 +133,6 @@ class PoCo(Conver):
                 if not self._send_done_fut.done():
                     self._send_done_fut.set_exception(exc)
 
-                err_msg = "Error sending co_end: " + str(exc)
-                err_stack = "".join(traceback.format_exc())
-                err_reason = err_msg + "\n" + err_stack
-                await po.disconnect(err_reason)
                 raise
         finally:
             if not self._send_done_fut.done():
@@ -143,9 +145,6 @@ class PoCo(Conver):
         fut = self._begin_acked_fut
         if fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
-        ended = self._end_acked_fut
-        if ended is not None and ended.done():
-            raise asyncio.InvalidStateError("co_end acked already!")
 
         fut.set_result(co_seq)
 
@@ -159,64 +158,57 @@ class PoCo(Conver):
 
         fut.set_result(co_seq)
 
-    async def response_begin(self):
+    async def wait_ack_begin(self):
         fut = self._begin_acked_fut
         if fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
         await fut
 
-    async def response_end(self):
+    async def wait_ack_end(self):
         fut = self._end_acked_fut
         if fut is None:
             raise asyncio.InvalidStateError("co_end not sent yet!")
         await fut
 
-    async def send_code(self, code):
+    async def send_code(self, code: str):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        po = self.po
-        assert self is po._coq[-1], "co not current sender?!"
+        hbic = self.hbic
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_code(code)
+        await hbic._send_code(code)
 
-    async def send_obj(self, code):
+    async def send_obj(self, code: str):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        po = self.po
-        assert self is po._coq[-1], "co not current sender?!"
+        hbic = self.hbic
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_code(code, b"co_recv")
+        await hbic._send_code(code, b"co_recv")
 
-    async def send_data(self, bufs):
+    async def send_data(
+        self,
+        bufs: Union[
+            bytes,
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly,
+            # normally with a generator function call
+            Sequence[Union[bytes, bytearray, memoryview]],
+        ],
+    ):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        po = self.po
-        assert self is po._coq[-1], "co not current sender?!"
+        hbic = self.hbic
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_data(bufs)
+        await hbic._send_data(bufs)
 
     async def recv_obj(self):
-        if self._begin_acked_fut is None:
-            raise asyncio.InvalidStateError("co_begin not sent yet!")
-        await self.response_begin()
-
-        po = self.po
-        assert self is po._coq[0], "co not current receiver?!"
-
-        return await po._wire.ho._recv_obj()
-
-    async def recv_data(self, bufs):
-        if self._begin_acked_fut is None:
-            raise asyncio.InvalidStateError("co_begin not sent yet!")
-        await self.response_begin()
-
-        po = self.po
-        assert self is po._coq[0], "co not current receiver?!"
-
-        await po._wire.ho._recv_data(bufs)
+        return await self._roq.get()
 
     async def get_obj(self, code):
         """
@@ -230,9 +222,9 @@ class PoCo(Conver):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        po = self.po
-        assert self is po._coq[-1], "co not current sender?!"
-        await po._send_text(code, b"co_send")
+        hbic = self.hbic
+        assert self is hbic._coq[-1], "co not current sender?!"
+        await hbic._send_text(code, b"co_send")
 
         return await self.recv_obj()
 
@@ -243,51 +235,66 @@ class HoCo(Conver):
 
     """
 
-    __slots__ = ("ho", "_co_seq", "_send_done_fut")
+    __slots__ = ("hbic", "_co_seq", "_send_done_fut")
 
-    def __init__(self, ho, co_seq):
-        self.ho = ho
+    def __init__(self, hbic, co_seq):
+        self.hbic = hbic
         self._co_seq = co_seq
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
 
-    async def send_code(self, code):
-        ho = self.ho
-        if self is not ho.co:
+    async def send_code(self, code: str):
+        hbic = self.hbic
+        if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-        assert self is po._coq[-1], "co not current sender?!"
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_code(code)
+        await hbic._send_code(code)
 
-    async def send_obj(self, code):
-        ho = self.ho
-        if self is not ho.co:
+    async def send_obj(self, code: str):
+        hbic = self.hbic
+        if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-        assert self is po._coq[-1], "co not current sender?!"
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_code(code, b"co_recv")
+        await hbic._send_code(code, b"co_recv")
 
-    async def send_data(self, bufs):
-        ho = self.ho
-        if self is not ho.co:
+    async def send_data(
+        self,
+        bufs: Union[
+            bytes,
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly,
+            # normally with a generator function call
+            Sequence[Union[bytes, bytearray, memoryview]],
+        ],
+    ):
+        hbic = self.hbic
+        if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
-        po = ho.po
-        assert self is po._coq[-1], "co not current sender?!"
+        assert self is hbic._coq[-1], "co not current sender?!"
 
-        await po._send_data(bufs)
+        await hbic._send_data(bufs)
 
     async def recv_obj(self):
-        ho = self.ho
-        if self is not ho.co:
+        hbic = self.hbic
+        if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
 
-        return await ho._recv_obj()
+        return await hbic._recv_one_obj()
 
-    async def recv_data(self, bufs):
-        ho = self.ho
-        if self is not ho.co:
+    async def recv_data(
+        self,
+        bufs: Union[
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly
+            Sequence[Union[bytearray, memoryview]],
+        ],
+    ):
+        hbic = self.hbic
+        if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
 
-        await ho._recv_data(bufs)
+        await hbic._recv_data(bufs)

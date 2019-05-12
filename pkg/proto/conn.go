@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/complyue/hbi/pkg/he"
 	"github.com/golang/glog"
@@ -20,7 +21,7 @@ func NewConnection(wire HBIWire, he *he.HostingEnv) (PostingEnd, HostingEnd) {
 		netIdent:   wire.NetIdent(),
 		remoteAddr: wire.RemoteAddr(),
 
-		nextCoSeq: minCoSeq,
+		nextCoSeq: details.MinCoSeq,
 	}
 	ho := &hostingEnd{
 		CancellableContext: NewCancellableContext(),

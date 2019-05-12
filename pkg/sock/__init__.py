@@ -3,6 +3,6 @@ from .sock import *
 __all__ = [
 
     # exports from .sock
-    'HBIC', 'HBIS',
+    'serve_socket', 'dial_socket',
 
 ]

@@ -2,11 +2,11 @@
 Hosting Environment
 
 """
-from .rie import *
+from .he import *
 
 __all__ = [
 
-    # exports from .rie
-    'run_in_env',
+    # exports from .he
+    'HostingEnv', 'run_py',
 
 ]

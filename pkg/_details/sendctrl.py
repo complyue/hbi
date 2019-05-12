@@ -27,7 +27,7 @@ class SendCtrl:
         for fut in waiters:
             if fut.done():
                 continue
-            if not exc:  # init BPE as late as possible
+            if exc is None:  # init BPE as late as possible
                 exc = BrokenPipeError("transport closed")
             fut.set_exception(exc)
 

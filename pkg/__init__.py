@@ -10,15 +10,15 @@ __all__ = [
     'CancellableQueue', 'handle_signals', 'SyncVar',
 
     # exports from .he
-    'run_in_env',
+    'HostingEnv', 'run_py',
 
     # exports from .log
     'root_logger', 'get_logger',
 
     # exports from .proto
-    'Conver', 'HostingEnd', 'PostingEnd',
+    'Conver', 'PoCo', 'HoPo', 'HBIC', 'HostingEnd', 'PostingEnd', 'HBIWire',
 
     # exports from .sock
-    'HBIC', 'HBIS',
+    'serve_socket', 'dial_socket',
 
 ]

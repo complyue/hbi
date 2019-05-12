@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 
+	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/golang/glog"
 )
@@ -25,12 +26,6 @@ type PostingEnd interface {
 
 	Close()
 }
-
-const (
-	// start/end value of co id seqs, to have the string length between 3~10
-	minCoSeq int = 101
-	maxCoSeq int = 9999999999
-)
 
 type postingEnd struct {
 	// embed a cancellable context
@@ -112,8 +107,8 @@ func (po *postingEnd) coEnqueue(coSeq string) (co *coState) {
 		// creating a new po co, assign a new coSeq at this endpoint
 		coSeq = fmt.Sprintf("%d", po.nextCoSeq)
 		po.nextCoSeq++
-		if po.nextCoSeq > maxCoSeq {
-			po.nextCoSeq = minCoSeq
+		if po.nextCoSeq > details.MaxCoSeq {
+			po.nextCoSeq = details.MinCoSeq
 		}
 		// these are only used for a po co
 		respBegan = make(chan struct{})
