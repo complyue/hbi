@@ -4,7 +4,7 @@ import (
 	"net"
 )
 
-// HBIWire is the interface an HBI trnasport should implement
+// HBIWire is the abstract interface an HBI wire should implement
 type HBIWire interface {
 	NetIdent() string
 	LocalAddr() net.Addr

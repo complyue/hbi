@@ -10,11 +10,9 @@ import (
 )
 
 // NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
-func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
+func NewConnection(wire HBIWire, he *he.HostingEnv) (PostingEnd, HostingEnd) {
 	netIdent := wire.NetIdent()
 
-	// the posting endpoint always gets created, as hosting-only connections can rarely be useful.
-	// even if a connection will never be used to post sth out, having a posting endpoint is no harm.
 	po := &postingEnd{
 		CancellableContext: NewCancellableContext(),
 
@@ -24,15 +22,6 @@ func NewConnection(he *he.HostingEnv, wire HBIWire) (PostingEnd, HostingEnd) {
 
 		nextCoSeq: minCoSeq,
 	}
-
-	if he == nil {
-		// creating a posting-only connection.
-		// in some cases, e.g. to replay HBI traffic recorded on disk,
-		// hosting is not possible, thus a posting only connection is desirable.
-		return po, nil
-	}
-
-	// most common case
 	ho := &hostingEnd{
 		CancellableContext: NewCancellableContext(),
 

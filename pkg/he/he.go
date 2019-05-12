@@ -37,8 +37,8 @@ func (he *HostingEnv) ExposedNames() []string {
 
 func (he *HostingEnv) NameExposed(name string) bool {
 	// list of exposed names should not be quite long, linear search is okay
-	for _, xpName := range he.exposure {
-		if xpName == name {
+	for _, expName := range he.exposure {
+		if expName == name {
 			return true
 		}
 	}
@@ -107,7 +107,16 @@ func (he *HostingEnv) Get(name string) interface{} {
 }
 
 func (he *HostingEnv) ExposeReactor(reactor interface{}) {
-	var xpName string
+	var expNameWhiteList map[string]struct{}
+	if reactorObj, ok := reactor.(Reactor); ok {
+		wlNames := reactorObj.NamesToExpose()
+		expNameWhiteList = make(map[string]struct{}, len(wlNames))
+		for i := range wlNames {
+			expNameWhiteList[wlNames[i]] = struct{}{}
+		}
+	}
+
+	var expName string
 
 	pv := reflect.ValueOf(reactor)
 	pt := pv.Type()
@@ -128,18 +137,24 @@ func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 			he.ExposeReactor(fv.Addr().Interface())
 			continue
 		}
+		if expNameWhiteList != nil {
+			if _, ok := expNameWhiteList[sf.Name]; !ok {
+				// not in declared exposure list
+				continue
+			}
+		}
 		// expose field getter/setter func
-		xpName = "Get" + sf.Name
-		if err := he.ve.Define(xpName, func() interface{} {
+		expName = "Get" + sf.Name
+		if err := he.ve.Define(expName, func() interface{} {
 			return fv.Interface()
 		}); err != nil {
 			panic(errors.RichError(err))
 		}
-		if !he.NameExposed(xpName) {
-			he.exposure = append(he.exposure, xpName)
+		if !he.NameExposed(expName) {
+			he.exposure = append(he.exposure, expName)
 		}
-		xpName = "Set" + sf.Name
-		if err := he.ve.Define(xpName, reflect.MakeFunc(
+		expName = "Set" + sf.Name
+		if err := he.ve.Define(expName, reflect.MakeFunc(
 			reflect.FuncOf([]reflect.Type{sf.Type}, []reflect.Type{}, false),
 			func(args []reflect.Value) (results []reflect.Value) {
 				fv.Set(args[0])
@@ -148,8 +163,8 @@ func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 		).Interface()); err != nil {
 			panic(errors.RichError(err))
 		}
-		if !he.NameExposed(xpName) {
-			he.exposure = append(he.exposure, xpName)
+		if !he.NameExposed(expName) {
+			he.exposure = append(he.exposure, expName)
 		}
 	}
 
@@ -160,12 +175,18 @@ func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 			continue // ignore unexported method
 		}
 		mv := pv.Method(mi)
-		xpName = mt.Name
-		if err := he.ve.Define(xpName, mv.Interface()); err != nil {
+		if expNameWhiteList != nil {
+			if _, ok := expNameWhiteList[mt.Name]; !ok {
+				// not in declared exposure list
+				continue
+			}
+		}
+		expName = mt.Name
+		if err := he.ve.Define(expName, mv.Interface()); err != nil {
 			panic(errors.RichError(err))
 		}
-		if !he.NameExposed(xpName) {
-			he.exposure = append(he.exposure, xpName)
+		if !he.NameExposed(expName) {
+			he.exposure = append(he.exposure, expName)
 		}
 	}
 

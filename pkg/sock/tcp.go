@@ -20,7 +20,7 @@ import (
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPListener)) (err error) {
 	var raddr *net.TCPAddr
 	raddr, err = net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
@@ -52,14 +52,14 @@ func ServeTCP(heFactory func() *he.HostingEnv, addr string, cb func(*net.TCPList
 		netIdent := wire.NetIdent()
 		glog.V(1).Infof("New HBI connection accepted: %s", netIdent)
 
-		proto.NewConnection(he, wire)
+		proto.NewConnection(wire, he)
 	}
 }
 
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
+func DialTCP(addr string, he *he.HostingEnv) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
 	raddr, err := net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
@@ -75,7 +75,7 @@ func DialTCP(he *he.HostingEnv, addr string) (po proto.PostingEnd, ho proto.Host
 	netIdent := wire.NetIdent()
 	glog.V(1).Infof("New HBI connection established: %s", netIdent)
 
-	po, ho = proto.NewConnection(he, wire)
+	po, ho = proto.NewConnection(wire, he)
 
 	return
 }
