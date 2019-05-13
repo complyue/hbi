@@ -91,9 +91,9 @@ class PoCo(Conver):
         self._end_acked_fut = None
 
         # obj receiving queue
-        self._roq = asyncio.Queue(maxsize=1)
+        self._roq = asyncio.Queue()
         # data receiving queue
-        self._rdq = asyncio.Queue(maxsize=1)
+        self._rdq = asyncio.Queue()
 
     async def __aenter__(self):
         await self.begin()
@@ -221,7 +221,17 @@ class PoCo(Conver):
         await hbic._send_data(bufs)
 
     async def recv_obj(self):
-        return await self._roq.get()
+
+        recv_fut = asyncio.ensure_future(self._roq.get())
+
+        disc_fut = self.hbic._disc_fut
+        done, pending = await asyncio.wait(
+            (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
+        )
+        if recv_fut.done():
+            return await recv_fut  # exception will be propagated if ever raised
+        # the done one must be disc_fut
+        raise disc_fut.exception() or asyncio.InvalidStateError(f"hbic disconnected")
 
     async def recv_data(
         self,
@@ -232,9 +242,19 @@ class PoCo(Conver):
             Sequence[Union[bytearray, memoryview]],
         ],
     ):
-        rdf = asyncio.get_running_loop().create_future()
-        await self._rdq.put((bufs, rdf))
-        await rdf
+
+        recv_fut = asyncio.get_running_loop().create_future()
+        await self._rdq.put((bufs, recv_fut))
+
+        disc_fut = self.hbic._disc_fut
+        done, pending = await asyncio.wait(
+            (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
+        )
+        if recv_fut.done():
+            await recv_fut  # exception will be propagated if ever raised
+            return
+        # the done one must be disc_fut
+        raise disc_fut.exception() or asyncio.InvalidStateError(f"hbic disconnected")
 
 
 class HoCo(Conver):
