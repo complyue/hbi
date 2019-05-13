@@ -22,6 +22,13 @@ async def serve_socket(
     wire_buf_low=6 * 1024 * 1024,
     net_opts: Optional[dict] = None,
 ):
+    """
+    serve_socket takes a factory function (which will be asked to produce one hosting
+    env for each incoming HBI consumer connection), and returns `asyncio.Server` object
+    representing the listening socket.
+
+    """
+
     if net_opts is None:
         net_opts = {}
 
@@ -51,12 +58,18 @@ async def serve_socket(
 
 async def dial_socket(
     addr: Union[tuple, str],
-    he: Optional[HostingEnv] = None,
+    he: HostingEnv,
     *,
     wire_buf_high=20 * 1024 * 1024,
     wire_buf_low=6 * 1024 * 1024,
     net_opts: Optional[dict] = None,
 ) -> Tuple[PostingEnd, HostingEnd]:
+    """
+    dial_socket takes a hosting env, establishes HBI connection to a service at `addr`,
+    returns the posting and hosting endpoints pair.
+
+    """
+
     if net_opts is None:
         net_opts = {}
 
@@ -88,7 +101,9 @@ async def dial_socket(
 
 class SocketWire(asyncio.Protocol):
     """
-    HBI wire protocol over a Socket transport
+    SocketWire implements HBI wire protocol on asyncio socket transport.
+
+    applications should never use this class directly.
 
     """
 
