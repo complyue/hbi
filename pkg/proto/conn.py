@@ -681,7 +681,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
             if chunk is None:
                 if not fut.done():
-                    fut.set_exception(RuntimeError("HBIC disconnected"))
+                    fut.set_exception(asyncio.InvalidStateError("hbic disconnected"))
                 wire.end_offload(None, data_sink)
 
             try:
@@ -734,7 +734,7 @@ HBIC {self.net_ident} disconnecting due to error:
                             "HBIC buffer source raised exception"
                         ) from exc
             except Exception as exc:
-                self._handle_wire_error(exc)
+                asyncio.create_task(self.disconnect(traceback.print_exc(), True))
                 if not fut.done():
                     fut.set_exception(exc)
 

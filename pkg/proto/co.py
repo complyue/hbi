@@ -149,7 +149,9 @@ class PoCo(Conver):
                 raise
         finally:
             if not self._send_done_fut.done():
-                self._send_done_fut.set_exception(RuntimeError("Abnormal Co End"))
+                self._send_done_fut.set_exception(
+                    asyncio.IncompleteReadError("abnormal co end")
+                )
 
     def _begin_acked(self, co_seq):
         if self.co_seq != co_seq:
