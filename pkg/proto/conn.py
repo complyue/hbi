@@ -28,6 +28,7 @@ class HBIC:
         "ho",
         "_conn_fut",
         "_disc_fut",
+        "disc_reason",
         "wire",
         "net_ident",
         "_send_ctrl",
@@ -49,6 +50,7 @@ class HBIC:
         loop = asyncio.get_running_loop()
         self._conn_fut = loop.create_future()
         self._disc_fut = loop.create_future()
+        self.disc_reason = None
 
         self._send_ctrl = SendCtrl()
         self._coq = deque()
@@ -153,48 +155,38 @@ class HBIC:
     async def disconnect(
         self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
     ):
+        if err_reason is not None:
+            if self.disc_reason is None:
+                self.disc_reason = err_reason
+                logger.error(
+                    rf"""
+HBIC {self.net_ident} disconnecting due to error:
+{err_reason}
+""",
+                    stack_info=True,
+                )
+            elif self.disc_reason != err_reason:
+                logger.error(
+                    f"HBIC {self.net_ident!s} sees another reason to disconnect: {err_reason}",
+                    stack_info=True,
+                )
+
         wire = self.wire
         if wire is None:
             raise asyncio.InvalidStateError("HBIC not wired yet!")
 
-        if err_reason is not None:
-            logger.error(
-                rf"""
-HBIC {self.net_ident} disconnecting due to error:
-{err_reason}
-""",
-                stack_info=True,
-            )
-
         disc_fut = self._disc_fut
-
-        exc = None  # exception used to cancel hosting task and landing thread
-
-        hott = self._hott
-        if hott is not None:
-            if err_reason is not None:
-                exc = asyncio.CancelledError(err_reason)
-            else:
-                exc = asyncio.CancelledError("HBIC disconnected.")
-            hott.throw(exc)
+        if disc_fut.done():  # already disconnected
+            assert not wire.is_connected(), "disc_fut done but wire still connected ?!"
+            return
 
         lath = self._lath
         if lath is not None and not lath.done():
-            if err_reason is not None:
-                exc = asyncio.CancelledError(err_reason)
-            else:
-                exc = asyncio.CancelledError("HBIC disconnected.")
-            lath._coro.throw(exc)
+            lath.cancel()
 
         try:
-            if not wire.is_connected():
-                if err_reason is not None and try_send_peer_err:
-                    logger.warning(
-                        f"Not sending peer error as wire not connected.\n{err_reason!s}",
-                        exc_info=True,
-                    )
-            else:
-                if err_reason is not None and try_send_peer_err:
+            if err_reason is not None and try_send_peer_err:
+                if wire.is_connected():
                     try:
                         await wire.send_packet(str(err_reason).encode("utf-8"), b"err")
                     except Exception:
@@ -202,14 +194,21 @@ HBIC {self.net_ident} disconnecting due to error:
                             "HBIC {self.net_ident} failed sending peer error",
                             exc_info=True,
                         )
+                else:
+                    logger.warning(
+                        f"Not sending peer error as unwired:\n{err_reason!s}",
+                        stack_info=True,
+                    )
 
+            if wire.is_connected():
                 wire.disconnect()
 
-            disc_fut.set_result(None)
+            disc_fut.set_result(err_reason)
         except Exception as exc:
             logger.warning(
                 "HBIC {self.net_ident} failed closing posting endpoint.", exc_info=True
             )
+            assert not disc_fut.done(), "?!"
             disc_fut.set_exception(exc)
 
         assert disc_fut.done()
@@ -247,12 +246,22 @@ HBIC {self.net_ident} disconnecting due to error:
 
     def wire_disconnected(self, wire, exc=None):
         assert wire is self.wire, "wire mismatch ?!"
+
         if exc is not None:
             logger.error(f"HBIC {self.net_ident} wire error: {exc}")
+
+            disc_reason = f"wire error: {exc}"
+            if self.disc_reason is None:
+                self.disc_reason = disc_reason
+
         else:
             exc = asyncio.InvalidStateError(
                 f"HBIC {self.net_ident} wire forcefully disconnected."
             )
+
+            disc_reason = self.disc_reason
+            if disc_reason is None:
+                disc_reason = "wire forcefully disconnected"
 
         conn_fut = self._conn_fut
         if not conn_fut.done():
@@ -260,21 +269,13 @@ HBIC {self.net_ident} disconnecting due to error:
 
         self._send_ctrl.shutdown(exc)
 
-        hott = self._hott
-        if hott is not None:
-            hott.throw(exc)
-
         lath = self._lath
         if lath is not None and not lath.done():
-            lath._coro.throw(exc)
+            lath.cancel()
 
         disc_fut = self._disc_fut
-        if disc_fut is None:
-            logger.error(f"HBIC {self.net_ident!s} wire forcefully disconnected.")
-            disc_fut = self._disc_fut = asyncio.get_running_loop().create_future()
-
         if not disc_fut.done():
-            disc_fut.set_result(exc)
+            disc_fut.set_result(disc_reason)
 
     async def _landing_thread(self):
         """
@@ -315,9 +316,12 @@ HBIC {self.net_ident} disconnecting due to error:
 
             try:
                 await pkt_available.wait()
-            except asyncio.CancelledError:
-                # this should capture the `err_reason` passed to an active `disconnect()` call
-                disc_reason = exc.args[0]
+            except asyncio.CancelledError as exc:
+
+                # capture the `err_reason` passed to `disconnect()`,
+                # can be None for normal disconnection.
+                disc_reason = self.disc_reason
+
                 break
 
             pkt = wire.recv_packet()
@@ -473,33 +477,35 @@ HBIC {self.net_ident} disconnecting due to error:
 
                 await hott  # run the coroutine by awaiting it
 
-            except asyncio.CancelledError as exc:
+            except asyncio.CancelledError:
 
-                logger.warning(
-                    f"HBIC {self.net_ident!s} a hosted task cancelled: {coro}",
-                    exc_info=True,
-                )
-
+                disc_reason = self.disc_reason
                 if disc_reason is None:
-                    # this should captures the `err_reason` passed to an active `disconnect()` call
-                    disc_reason = exc.args[0]
-                else:
-                    logger.warning(
-                        f"HBIC {self.net_ident!s} landing thread has more reason to disconnect.",
+                    # cancelled due to other reasons than disconnection
+
+                    disc_reason = f"landing task cancelled:\n{traceback.print_exc()!s}"
+
+                    logger.error(
+                        f"HBIC {self.net_ident!s} unexpected cancellation in landing task: {hott!r}",
                         exc_info=True,
                     )
 
                 break
 
-            except Exception as exc:
+            except Exception:
 
-                disc_reason = f"HBIC {self.net_ident!s} a hosted task failed:\n{traceback.print_exc()!s}"
+                disc_reason = f"landing task failed:\n{traceback.print_exc()!s}"
+
+                logger.error(
+                    f"HBIC {self.net_ident!s} unexpected error in landing task: {hott!r}",
+                    exc_info=True,
+                )
 
                 break
 
-        # the landing thread is terminating, disconnect the wire if not already be doing
-        if self._disc_fut is None:
-            # don't await the `disconnect()` here, it cancels this thread as part of the
+        # the landing thread is terminating, disconnect if not already
+        if not self._disc_fut.done():
+            # but don't await the `disconnect()` here, it cancels this thread as part of the
             # disconnecting procedure.
             asyncio.create_task(self.disconnect(disc_reason, try_send_peer_err))
 
@@ -641,7 +647,7 @@ HBIC {self.net_ident} disconnecting due to error:
                 if tail_co.is_closed():
                     break
                 await tail_co.wait_closed()
-            await self.disconnect()
+            await self.disconnect(None, False)
 
         asyncio.create_task(disc_after_po_done())
         return True
