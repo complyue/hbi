@@ -42,7 +42,7 @@ class PostingEnd:
 
         hbic = self.hbic
         async with hbic.co():
-            await hbic._send_code(code)
+            await hbic._send_text(code)
 
     async def notif_data(
         self,
@@ -63,5 +63,5 @@ class PostingEnd:
         """
         hbic = self.hbic
         async with hbic.co():
-            await hbic._send_code(code)
+            await hbic._send_text(code)
             await hbic._send_data(bufs)

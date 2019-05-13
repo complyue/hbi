@@ -104,7 +104,6 @@ class HBIC:
             payload = json.dumps(code).encode("utf-8")
 
         wire = self.wire
-        assert wire.is_connected()
         try:
             await self._send_ctrl.flowing()
             wire.send_packet(payload, wire_dir)
@@ -115,7 +114,6 @@ class HBIC:
 
     async def _send_buffer(self, buf):
         wire = self.wire
-        assert wire.is_connected()
         try:
             await self._send_ctrl.flowing()
             wire.send_data(buf)
@@ -123,9 +121,6 @@ class HBIC:
             err_reason = traceback.print_exc()
             await self.disconnect(err_reason, False)
             raise
-
-    async def _send_code(self, code: str, wire_dir=b""):
-        await self._send_text(code, wire_dir)
 
     async def _send_data(
         self,
@@ -371,7 +366,7 @@ HBIC {self.net_ident} disconnecting due to error:
                     if inspect.iscoroutine(landed):
                         landed = await landed
 
-                    await self._send_code(landed, b"co_recv")
+                    await self._send_text(landed, b"co_recv")
 
                 self._hott = sendback_to_poco()
 
@@ -420,6 +415,34 @@ HBIC {self.net_ident} disconnecting due to error:
                     raise asyncio.InvalidStateError(f"mismatch co_seq")
 
                 co._begin_acked(co_seq)
+
+            elif "po_data" == wire_dir:
+
+                if ho._co is not None:  # pushing data to a ho co
+                    disc_reason = "po_data to a ho co ?!"
+                    break
+
+                if not coq:  # nor a po co to recv the pushed data
+                    disc_reason = "no po co to receive data"
+                    break
+
+                # pushing data to a po co
+                co_seq = payload
+                co = coq[0]
+                if co.co_seq != co_seq:
+                    raise asyncio.InvalidStateError(f"mismatch co_seq")
+
+                async def pump_po_co_data():
+                    bufs, fut = await co._rdq.get()
+                    try:
+                        await self._recv_data(bufs)
+                        fut.set_result(None)
+                    except Exception as exc:
+                        if not fut.done():
+                            fut.set_exception(exc)
+                        raise
+
+                self._hott = pump_po_co_data()
 
             elif "co_ack_end" == wire_dir:
 
@@ -696,7 +719,7 @@ HBIC {self.net_ident} disconnecting due to error:
                         wire.end_offload(chunk, data_sink)
                         # resolve the future
                         if not fut.done():
-                            fut.set_result(bufs)
+                            fut.set_result(None)
                         # and done
                         return
                     except Exception as exc:
@@ -710,4 +733,4 @@ HBIC {self.net_ident} disconnecting due to error:
 
         wire.begin_offload(data_sink)
 
-        return await fut
+        await fut

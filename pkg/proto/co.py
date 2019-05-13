@@ -14,11 +14,9 @@ class Conver:
     Abstract Conversation
 
     All conversations can:
-      * push (send) code to peer for landing
-        * the landed result obj can be optionally received by its hosting conversation
-      * push data/stream to peer for receiving by its hosting conversation
-    
-    Only hosting conversation can receive data/stream.
+      * push code to peer for landing
+        * the landed result obj can optionally be received by peer conversation
+      * push data/stream to peer for receiving by peer conversation
 
     """
 
@@ -50,6 +48,17 @@ class Conver:
     async def recv_obj(self) -> object:
         raise NotImplementedError
 
+    async def recv_data(
+        self,
+        bufs: Union[
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly
+            Sequence[Union[bytearray, memoryview]],
+        ],
+    ):
+        raise NotImplementedError
+
     def is_closed(self):
         return self._send_done_fut.done()
 
@@ -70,6 +79,7 @@ class PoCo(Conver):
         "_begin_acked_fut",
         "_end_acked_fut",
         "_roq",
+        "_rdq",
     )
 
     def __init__(self, hbic, co_seq):
@@ -80,7 +90,10 @@ class PoCo(Conver):
         self._begin_acked_fut = None
         self._end_acked_fut = None
 
+        # obj receiving queue
         self._roq = asyncio.Queue(maxsize=1)
+        # data receiving queue
+        self._rdq = asyncio.Queue(maxsize=1)
 
     async def __aenter__(self):
         await self.begin()
@@ -177,7 +190,7 @@ class PoCo(Conver):
         hbic = self.hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_code(code)
+        await hbic._send_text(code)
 
     async def send_obj(self, code: str):
         if self._begin_acked_fut is None:
@@ -186,7 +199,7 @@ class PoCo(Conver):
         hbic = self.hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_code(code, b"co_recv")
+        await hbic._send_text(code, b"co_recv")
 
     async def send_data(
         self,
@@ -210,23 +223,18 @@ class PoCo(Conver):
     async def recv_obj(self):
         return await self._roq.get()
 
-    async def get_obj(self, code):
-        """
-        Get result object of `code` landed at peer endpoint.
-
-        This is throughput killer really, try your best avoid using this,
-        though this is really convenient and intuitive to call.
-        
-        """
-
-        if self._begin_acked_fut is None:
-            raise asyncio.InvalidStateError("co_begin not sent yet!")
-
-        hbic = self.hbic
-        assert self is hbic._coq[-1], "co not current sender?!"
-        await hbic._send_text(code, b"co_send")
-
-        return await self.recv_obj()
+    async def recv_data(
+        self,
+        bufs: Union[
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly
+            Sequence[Union[bytearray, memoryview]],
+        ],
+    ):
+        rdf = asyncio.get_running_loop().create_future()
+        await self._rdq.put((bufs, rdf))
+        await rdf
 
 
 class HoCo(Conver):
@@ -249,7 +257,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_code(code)
+        await hbic._send_text(code)
 
     async def send_obj(self, code: str):
         hbic = self.hbic
@@ -257,7 +265,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_code(code, b"co_recv")
+        await hbic._send_text(code, b"co_recv")
 
     async def send_data(
         self,
@@ -275,6 +283,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
+        await hbic._send_text(self.co_seq, b"po_data")
         await hbic._send_data(bufs)
 
     async def recv_obj(self):
