@@ -17,12 +17,29 @@ class PostingEnd:
 
     """
 
-    __slots__ = ("hbic", "remote_addr")
+    __slots__ = ("_hbic", "_remote_addr")
 
     def __init__(self, hbic):
-        self.hbic = hbic
+        """
+        HBI applications should never create a posting endpoint directly.
 
-        self.remote_addr = "<unwired>"
+        """
+
+        self._hbic = hbic
+
+        self._remote_addr = "<unwired>"
+
+    @property
+    def ho(self):
+        return self._hbic.ho
+
+    @property
+    def remote_addr(self):
+        return self._remote_addr
+
+    @property
+    def net_ident(self):
+        return self._hbic.net_ident
 
     def co(self) -> PoCo:
         """
@@ -31,7 +48,7 @@ class PostingEnd:
         called before and after using its send/recv methods.
 
         """
-        return self.hbic.co()
+        return self._hbic.co()
 
     async def notif(self, code: str):
         """
@@ -40,7 +57,7 @@ class PostingEnd:
 
         """
 
-        hbic = self.hbic
+        hbic = self._hbic
         async with hbic.co():
             await hbic._send_packet(code)
 
@@ -61,7 +78,18 @@ class PostingEnd:
         with binary data/stream following, within a posting conversation.
 
         """
-        hbic = self.hbic
+        hbic = self._hbic
         async with hbic.co():
             await hbic._send_packet(code)
             await hbic._send_data(bufs)
+
+    def is_connected(self) -> bool:
+        return self._hbic.is_connected()
+
+    async def disconnect(
+        self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
+    ):
+        await self._hbic.disconnect(err_reason, try_send_peer_err)
+
+    async def wait_disconnected(self):
+        await self._hbic.wait_disconnected()

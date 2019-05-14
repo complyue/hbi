@@ -19,7 +19,8 @@ logger = get_logger(__name__)
 
 class HBIC:
     """
-    HBIC is connection object regardless of the underlying transporting mechanism.
+    HBIC is designed to interface with HBI wire protocol implementations,
+    HBI applications should not use HBIC directly.
 
     """
 
@@ -72,7 +73,7 @@ class HBIC:
         co = PoCo(self, co_seq)
         return co
 
-    def is_connected(self):
+    def is_connected(self) -> bool:
         if self._disc_fut.done():
             return False
         wire = self.wire
@@ -221,8 +222,8 @@ HBIC {self.net_ident} disconnecting due to error:
     def wire_connected(self, wire):
         self.wire = wire
         self.net_ident = wire.net_ident()
-        self.po.remote_addr = wire.remote_addr()
-        self.ho.local_addr = wire.local_addr()
+        self.po._remote_addr = wire.remote_addr()
+        self.ho._local_addr = wire.local_addr()
 
         self._send_ctrl.startup()
 

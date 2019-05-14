@@ -19,20 +19,36 @@ class HostingEnd:
 
     """
 
-    __slots__ = ("hbic", "env", "local_addr", "_co")
+    __slots__ = ("_hbic", "_env", "_local_addr", "_co")
 
     def __init__(self, hbic, env):
         """
-        App code should never create a hosting endpoint directly.
+        HBI applications should never create a hosting endpoint directly.
 
         """
 
-        self.hbic: HBICI = hbic
-        self.env: HostingEnv = env
+        self._hbic: HBICI = hbic
+        self._env: HostingEnv = env
 
-        self.local_addr = "<unwired>"
+        self._local_addr = "<unwired>"
 
         self._co: HoCo = None
+
+    @property
+    def po(self):
+        return self._hbic.po
+
+    @property
+    def env(self):
+        return self._env
+
+    @property
+    def local_addr(self):
+        return self._local_addr
+
+    @property
+    def net_ident(self):
+        return self._hbic.net_ident
 
     @property
     def co(self) -> HoCo:
@@ -41,3 +57,14 @@ class HostingEnd:
 
         """
         return self._co
+
+    def is_connected(self) -> bool:
+        return self._hbic.is_connected()
+
+    async def disconnect(
+        self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
+    ):
+        await self._hbic.disconnect(err_reason, try_send_peer_err)
+
+    async def wait_disconnected(self):
+        await self._hbic.wait_disconnected()
