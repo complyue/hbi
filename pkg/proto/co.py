@@ -73,7 +73,7 @@ class PoCo(Conver):
     """
 
     __slots__ = (
-        "hbic",
+        "_hbic",
         "_co_seq",
         "_send_done_fut",
         "_begin_acked_fut",
@@ -83,7 +83,7 @@ class PoCo(Conver):
     )
 
     def __init__(self, hbic, co_seq):
-        self.hbic = hbic
+        self._hbic = hbic
         self._co_seq = co_seq
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
@@ -94,64 +94,6 @@ class PoCo(Conver):
         self._roq = asyncio.Queue()
         # data receiving queue
         self._rdq = asyncio.Queue()
-
-    async def __aenter__(self):
-        await self.begin()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.end()
-
-    async def begin(self):
-        if self._begin_acked_fut is not None:
-            raise asyncio.InvalidStateError("co_begin sent already!")
-
-        hbic = self.hbic
-        coq = hbic._coq
-        while coq:
-            tail_co = coq[-1]
-            if tail_co.is_closed():
-                break
-            await tail_co.wait_closed()
-
-        self._begin_acked_fut = asyncio.get_running_loop().create_future()
-
-        coq.append(self)
-
-        try:
-            await hbic._send_packet(self.co_seq, b"co_begin")
-        except Exception as exc:
-            self._begin_acked_fut.set_exception(exc)
-            raise
-
-    async def end(self):
-        try:
-            if self._begin_acked_fut is None:
-                raise asyncio.InvalidStateError("co_begin not sent yet!")
-            if self._end_acked_fut is not None:
-                raise asyncio.InvalidStateError("co_end sent already!")
-
-            hbic = self.hbic
-            assert self is hbic._coq[-1], "co not current sender?!"
-
-            self._end_acked_fut = asyncio.get_running_loop().create_future()
-
-            try:
-                await hbic._send_packet(self.co_seq, b"co_end")
-
-                self._send_done_fut.set_result(self.co_seq)
-            except Exception as exc:
-                self._end_acked_fut.set_exception(exc)
-
-                if not self._send_done_fut.done():
-                    self._send_done_fut.set_exception(exc)
-
-                raise
-        finally:
-            if not self._send_done_fut.done():
-                self._send_done_fut.set_exception(
-                    asyncio.IncompleteReadError("abnormal co end")
-                )
 
     def _begin_acked(self, co_seq):
         if self.co_seq != co_seq:
@@ -189,7 +131,7 @@ class PoCo(Conver):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        hbic = self.hbic
+        hbic = self._hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_packet(code)
@@ -198,7 +140,7 @@ class PoCo(Conver):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        hbic = self.hbic
+        hbic = self._hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_packet(code, b"co_recv")
@@ -217,7 +159,7 @@ class PoCo(Conver):
         if self._begin_acked_fut is None:
             raise asyncio.InvalidStateError("co_begin not sent yet!")
 
-        hbic = self.hbic
+        hbic = self._hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_data(bufs)
@@ -226,7 +168,7 @@ class PoCo(Conver):
 
         recv_fut = asyncio.ensure_future(self._roq.get())
 
-        disc_fut = self.hbic._disc_fut
+        disc_fut = self._hbic._disc_fut
         done, pending = await asyncio.wait(
             (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
         )
@@ -248,7 +190,7 @@ class PoCo(Conver):
         recv_fut = asyncio.get_running_loop().create_future()
         await self._rdq.put((bufs, recv_fut))
 
-        disc_fut = self.hbic._disc_fut
+        disc_fut = self._hbic._disc_fut
         done, pending = await asyncio.wait(
             (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
         )
@@ -265,16 +207,16 @@ class HoCo(Conver):
 
     """
 
-    __slots__ = ("hbic", "_co_seq", "_send_done_fut")
+    __slots__ = ("_hbic", "_co_seq", "_send_done_fut")
 
     def __init__(self, hbic, co_seq):
-        self.hbic = hbic
+        self._hbic = hbic
         self._co_seq = co_seq
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
 
     async def send_code(self, code: str):
-        hbic = self.hbic
+        hbic = self._hbic
         if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
@@ -282,7 +224,7 @@ class HoCo(Conver):
         await hbic._send_packet(code)
 
     async def send_obj(self, code: str):
-        hbic = self.hbic
+        hbic = self._hbic
         if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
@@ -300,7 +242,7 @@ class HoCo(Conver):
             Sequence[Union[bytes, bytearray, memoryview]],
         ],
     ):
-        hbic = self.hbic
+        hbic = self._hbic
         if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
@@ -309,7 +251,7 @@ class HoCo(Conver):
         await hbic._send_data(bufs)
 
     async def recv_obj(self):
-        hbic = self.hbic
+        hbic = self._hbic
         if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
 
@@ -324,7 +266,7 @@ class HoCo(Conver):
             Sequence[Union[bytearray, memoryview]],
         ],
     ):
-        hbic = self.hbic
+        hbic = self._hbic
         if self is not hbic.ho.co:
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
 

@@ -41,14 +41,12 @@ class PostingEnd:
     def net_ident(self):
         return self._hbic.net_ident
 
-    def co(self) -> PoCo:
+    def co(self):
         """
-        co creates and returns a posting conversation object, normally to be used
-        as an `async with` context manager, or its `begin()` and `end()` should be
-        called before and after using its send/recv methods.
+        co creates a context manager, meant to be `async with`, for a fresh new posting conversation.
 
         """
-        return self._hbic.co()
+        return _PoCoCtx(self._hbic)
 
     async def notif(self, code: str):
         """
@@ -58,7 +56,7 @@ class PostingEnd:
         """
 
         hbic = self._hbic
-        async with hbic.co():
+        async with self.co():
             await hbic._send_packet(code)
 
     async def notif_data(
@@ -79,7 +77,7 @@ class PostingEnd:
 
         """
         hbic = self._hbic
-        async with hbic.co():
+        async with self.co():
             await hbic._send_packet(code)
             await hbic._send_data(bufs)
 
@@ -93,3 +91,54 @@ class PostingEnd:
 
     async def wait_disconnected(self):
         await self._hbic.wait_disconnected()
+
+
+class _PoCoCtx:
+    __slots__ = ("_hbic", "_co")
+
+    def __init__(self, hbic):
+        self._hbic = hbic
+        self._co = None
+
+    async def __aenter__(self):
+        co = await self._hbic.new_po_co()
+        assert co._begin_acked_fut is not None
+
+        self._co = co
+        return co
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        hbic = self._hbic
+        co = self._co
+
+        try:
+            if co._begin_acked_fut is None:
+                raise asyncio.InvalidStateError("co_begin not sent yet!")
+            if co._end_acked_fut is not None:
+                raise asyncio.InvalidStateError("co_end sent already!")
+
+            assert co is hbic._coq[-1], "co not current sender?!"
+
+            co._end_acked_fut = asyncio.get_running_loop().create_future()
+
+            try:
+                await hbic._send_packet(co.co_seq, b"co_end")
+
+                co._send_done_fut.set_result(co.co_seq)
+            except Exception as exc:
+                co._end_acked_fut.set_exception(exc)
+
+                if not co._send_done_fut.done():
+                    co._send_done_fut.set_exception(exc)
+
+                raise
+        finally:
+            if not co._send_done_fut.done():
+                co._send_done_fut.set_exception(
+                    asyncio.IncompleteReadError("abnormal co end")
+                )
+
+    def __enter__(self):
+        raise TypeError(
+            "do you mean `async with po.co():` instead of `with po.co():` ?"
+        )

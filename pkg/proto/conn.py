@@ -64,13 +64,31 @@ class HBIC:
         # the hosting task that is scheduled to/already be running in landing thread
         self._hott = None
 
-    def co(self) -> PoCo:
+    async def new_po_co(self) -> PoCo:
         next_co_seq = self._next_co_seq
         co_seq = str(next_co_seq)
         next_co_seq += 1
         if next_co_seq > MAX_CO_SEQ:
             self._next_co_seq = MIN_CO_SEQ
         co = PoCo(self, co_seq)
+
+        coq = self._coq
+        while coq:
+            tail_co = coq[-1]
+            if tail_co.is_closed():
+                break
+            await tail_co.wait_closed()
+
+        co._begin_acked_fut = asyncio.get_running_loop().create_future()
+
+        coq.append(co)
+
+        try:
+            await self._send_packet(co_seq, b"co_begin")
+        except Exception as exc:
+            co._begin_acked_fut.set_exception(exc)
+            raise
+
         return co
 
     def is_connected(self) -> bool:
@@ -503,6 +521,12 @@ HBIC {self.net_ident} disconnecting due to error:
                 )
 
                 break
+
+        if coq:
+            fut = coq[-1]._send_done_fut
+            if not fut.done():
+                # to fail coro waiting to start a new po co, with an exception
+                fut.set_exception(asyncio.InvalidStateError("hbic disconnected"))
 
         # the landing thread is terminating, disconnect if not already
         if not self._disc_fut.done():
