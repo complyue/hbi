@@ -119,7 +119,7 @@ class PoCo(Conver):
         coq.append(self)
 
         try:
-            await hbic._send_text(self.co_seq, b"co_begin")
+            await hbic._send_packet(self.co_seq, b"co_begin")
         except Exception as exc:
             self._begin_acked_fut.set_exception(exc)
             raise
@@ -137,7 +137,7 @@ class PoCo(Conver):
             self._end_acked_fut = asyncio.get_running_loop().create_future()
 
             try:
-                await hbic._send_text(self.co_seq, b"co_end")
+                await hbic._send_packet(self.co_seq, b"co_end")
 
                 self._send_done_fut.set_result(self.co_seq)
             except Exception as exc:
@@ -192,7 +192,7 @@ class PoCo(Conver):
         hbic = self.hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_text(code)
+        await hbic._send_packet(code)
 
     async def send_obj(self, code: str):
         if self._begin_acked_fut is None:
@@ -201,7 +201,7 @@ class PoCo(Conver):
         hbic = self.hbic
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_text(code, b"co_recv")
+        await hbic._send_packet(code, b"co_recv")
 
     async def send_data(
         self,
@@ -279,7 +279,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_text(code)
+        await hbic._send_packet(code)
 
     async def send_obj(self, code: str):
         hbic = self.hbic
@@ -287,7 +287,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_text(code, b"co_recv")
+        await hbic._send_packet(code, b"co_recv")
 
     async def send_data(
         self,
@@ -305,7 +305,7 @@ class HoCo(Conver):
             raise asyncio.InvalidStateError("Hosting conversation ended already!")
         assert self is hbic._coq[-1], "co not current sender?!"
 
-        await hbic._send_text(self.co_seq, b"po_data")
+        await hbic._send_packet(self.co_seq, b"po_data")
         await hbic._send_data(bufs)
 
     async def recv_obj(self):

@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import json
 import traceback
 from collections import deque
 from typing import *
@@ -20,7 +19,7 @@ logger = get_logger(__name__)
 
 class HBIC:
     """
-    HBIC connection object regardless of the underlying transporting mechanism.
+    HBIC is connection object regardless of the underlying transporting mechanism.
 
     """
 
@@ -97,14 +96,16 @@ class HBIC:
     def resume_sending(self):
         self._send_ctrl.unleash()
 
-    async def _send_text(self, code, wire_dir=b""):
-        if isinstance(code, bytes):
-            payload = code
-        elif isinstance(code, str):
-            payload = code.encode("utf-8")
+    async def _send_packet(self, payload, wire_dir=b""):
+        if isinstance(payload, str):
+            # textual code
+            payload = payload.encode("utf-8")
+        elif isinstance(payload, (bytes, bytearray)):
+            # raw bytes of textual code
+            pass
         else:
-            # try convert to json and send
-            payload = json.dumps(code).encode("utf-8")
+            # send its repr as textual code
+            payload = repr(payload).encode("utf-8")
 
         wire = self.wire
         try:
@@ -141,9 +142,7 @@ class HBIC:
         # use a generator function to pull all buffers from hierarchy
 
         def pull_from(boc):
-            b = cast_to_src_buffer(
-                boc
-            )  # this static method can be overridden by subclass
+            b = cast_to_src_buffer(boc)
             if b is not None:
                 yield b
                 return
@@ -351,7 +350,7 @@ HBIC {self.net_ident} disconnecting due to error:
                 co = HoCo(self, co_seq)
                 coq.append(co)
                 ho._co = co
-                await self._send_text(co_seq, b"co_ack_begin")
+                await self._send_packet(co_seq, b"co_ack_begin")
 
             elif "" == wire_dir:
 
@@ -371,7 +370,7 @@ HBIC {self.net_ident} disconnecting due to error:
                     if inspect.iscoroutine(landed):
                         landed = await landed
 
-                    await self._send_text(landed, b"co_recv")
+                    await self._send_packet(landed, b"co_recv")
 
                 self._hott = sendback_to_poco()
 
@@ -409,7 +408,7 @@ HBIC {self.net_ident} disconnecting due to error:
                 assert co is tail_co, "ho co not tail of coq ?!"
 
                 co._send_done_fut.set_result(co_seq)
-                await self._send_text(co_seq, b"co_ack_end")
+                await self._send_packet(co_seq, b"co_ack_end")
                 ho._co = None
 
             elif "co_ack_begin" == wire_dir:

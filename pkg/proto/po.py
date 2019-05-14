@@ -33,7 +33,7 @@ class PostingEnd:
         """
         return self.hbic.co()
 
-    async def notif(self, code: Union[str, Sequence[str]]):
+    async def notif(self, code: str):
         """
         notif is short hand to push a piece/sequence of code to peer for landing,
         within a posting conversation.
@@ -42,11 +42,11 @@ class PostingEnd:
 
         hbic = self.hbic
         async with hbic.co():
-            await hbic._send_text(code)
+            await hbic._send_packet(code)
 
     async def notif_data(
         self,
-        code: Union[str, Sequence[str]],
+        code: str,
         bufs: Union[
             bytes,
             bytearray,
@@ -63,5 +63,5 @@ class PostingEnd:
         """
         hbic = self.hbic
         async with hbic.co():
-            await hbic._send_text(code)
+            await hbic._send_packet(code)
             await hbic._send_data(bufs)
