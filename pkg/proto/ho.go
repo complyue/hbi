@@ -38,3 +38,11 @@ func (ho *HostingEnd) Co() *HoCo {
 func (ho *HostingEnd) Disconnect(errReason string, trySendPeerError bool) {
 	ho.hbic.Disconnect(errReason, trySendPeerError)
 }
+
+func (ho *HostingEnd) Close() {
+	ho.hbic.Disconnect("", false)
+}
+
+func (ho *HostingEnd) Done() <-chan struct{} {
+	return ho.hbic.Done()
+}

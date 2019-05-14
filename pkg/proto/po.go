@@ -51,3 +51,11 @@ func (po *PostingEnd) NotifData(code string, d []byte) (err error) {
 func (po *PostingEnd) Disconnect(errReason string, trySendPeerError bool) {
 	po.hbic.Disconnect(errReason, trySendPeerError)
 }
+
+func (po *PostingEnd) Close() {
+	po.hbic.Disconnect("", false)
+}
+
+func (po *PostingEnd) Done() <-chan struct{} {
+	return po.hbic.Done()
+}

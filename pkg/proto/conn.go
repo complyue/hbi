@@ -400,6 +400,16 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 		defer func() {
 			if e := recover(); e != nil {
 				err = errors.RichError(e)
+			} else if err != nil {
+				err = errors.RichError(err)
+			}
+
+			if len(discReason) > 0 {
+				if err == nil {
+					err = errors.New(discReason)
+				}
+			} else if err != nil {
+				discReason = fmt.Sprintf("%+v", err)
 			}
 
 			if err != nil {
@@ -413,13 +423,15 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 
 		if initMagic := env.Get("__hbi_init__"); initMagic != nil {
 			if initFunc, ok = initMagic.(InitMagicFunction); !ok {
-				panic(errors.Errorf("Bad __hbi_init__() type: %T", initMagic))
+				discReason = fmt.Sprintf("Bad __hbi_init__() type: %T", initMagic)
+				return
 			}
 		}
 
 		if cleanupMagic := env.Get("__hbi_cleanup__"); cleanupMagic != nil {
 			if cleanupFunc, ok = cleanupMagic.(CleanupMagicFunction); !ok {
-				panic(errors.Errorf("Bad __hbi_cleanup__() type: %T", cleanupMagic))
+				discReason = fmt.Sprintf("Bad __hbi_cleanup__() type: %T", cleanupMagic)
+				return
 			}
 		}
 

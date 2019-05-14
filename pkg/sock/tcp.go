@@ -59,7 +59,7 @@ func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPList
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(addr string, he *he.HostingEnv) (po proto.PostingEnd, ho proto.HostingEnd, err error) {
+func DialTCP(addr string, he *he.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
 	raddr, err := net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
@@ -75,7 +75,7 @@ func DialTCP(addr string, he *he.HostingEnv) (po proto.PostingEnd, ho proto.Host
 	netIdent := wire.NetIdent()
 	glog.V(1).Infof("New HBI connection established: %s", netIdent)
 
-	po, ho = proto.NewConnection(wire, he)
+	po, ho, err = proto.NewConnection(wire, he)
 
 	return
 }
