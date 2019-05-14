@@ -373,6 +373,8 @@ HBIC {self.net_ident} disconnecting due to error:
 
             elif "" == wire_dir:
 
+                # peer is pushing the textual code for side-effect of its landing
+
                 async def land_code():
                     landed = he.run_in_env(payload)
                     if inspect.iscoroutine(landed):
@@ -398,6 +400,8 @@ HBIC {self.net_ident} disconnecting due to error:
                 if ho._co is not None:  # pushing obj to a ho co
                     disc_reason = "co_recv without priori receiving code in landing"
                     break
+
+                # no ho co means the sent object meant to be received by a po co
 
                 if not coq:  # nor a po co to recv the pushed obj
                     disc_reason = "no conversation to receive object"
@@ -441,15 +445,17 @@ HBIC {self.net_ident} disconnecting due to error:
 
             elif "po_data" == wire_dir:
 
-                if ho._co is not None:  # pushing data to a ho co
+                if ho._co is not None:  # pushing data/stream to a ho co
                     disc_reason = "po_data to a ho co ?!"
                     break
+
+                # no ho co means the sent data/stream meant to be received by a po co
 
                 if not coq:  # nor a po co to recv the pushed data
                     disc_reason = "no po co to receive data"
                     break
 
-                # pushing data to a po co
+                # pushing data/stream to a po co
                 co_seq = payload
                 co = coq[0]
                 if co.co_seq != co_seq:
@@ -593,19 +599,7 @@ HBIC {self.net_ident} disconnecting due to error:
             # got a packet, land it
             payload, wire_dir = pkt
 
-            if "" == wire_dir:
-
-                # some code to execute preceding code for obj to be received.
-                # todo this harmful and be explicitly disallowed ?
-
-                async def land_code():
-                    landed = he.run_in_env(payload)
-                    if inspect.iscoroutine(landed):
-                        landed = await landed
-
-                self._hott = land_code()
-
-            elif "co_recv" == wire_dir:
+            if "co_recv" == wire_dir:
 
                 # the very expected packet
 
@@ -620,11 +614,27 @@ HBIC {self.net_ident} disconnecting due to error:
 
                 self._hott = recv_for_hoco()
 
+            elif "" == wire_dir:
+
+                # some code to execute preceding code for obj to be received.
+                # todo this harmful and be explicitly disallowed ?
+
+                async def land_code():
+                    landed = he.run_in_env(payload)
+                    if inspect.iscoroutine(landed):
+                        landed = await landed
+
+                self._hott = land_code()
+
             elif "err" == wire_dir:
                 # peer error
 
                 try_send_peer_err = False
                 disc_reason = f"peer error: {payload!s}"
+
+            elif "co_send" == wire_dir:
+
+                disc_reason = "issued co_send before sending an object expected by prior receiving-code"
 
             else:
 

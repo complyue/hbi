@@ -3,6 +3,7 @@ package proto
 import (
 	"fmt"
 	"io"
+	"sync"
 
 	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
@@ -10,234 +11,646 @@ import (
 	"github.com/golang/glog"
 )
 
-// NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
-func NewConnection(wire HBIWire, he *he.HostingEnv) (PostingEnd, HostingEnd) {
-	netIdent := wire.NetIdent()
+// HBIC is designed to interface with HBI wire protocol implementations,
+// HBI applications should not use HBIC directly.
+type HBIC struct {
+	// embed a cancellable context
+	CancellableContext
 
-	po := &postingEnd{
+	po *PostingEnd
+	ho *HostingEnd
+
+	wire     HBIWire
+	netIdent string
+
+	// increamental record for non-repeating conversation ID sequence
+	nextCoSeq int
+	// conversation queue to serialize sending activities
+	coq []coState
+
+	// to guard access to conversation related fields
+	muCo sync.Mutex
+}
+
+func (hbic *HBIC) Po() *PostingEnd {
+	return hbic.po
+}
+
+func (hbic *HBIC) Ho() *HostingEnd {
+	return hbic.ho
+}
+
+func (hbic *HBIC) Wire() HBIWire {
+	return hbic.wire
+}
+
+func (hbic *HBIC) NetIdent() string {
+	return hbic.netIdent
+}
+
+func (hbic *HBIC) Disconnect(errReason string, trySendPeerError bool) {
+	if !hbic.CancellableContext.Cancelled() {
+		// can close only once
+		defer hbic.wire.Disconnect()
+	}
+
+	if len(errReason) > 0 {
+		// cancel or update err if already cancelled
+		hbic.CancellableContext.Cancel(errors.New(errReason))
+	} else if hbic.CancellableContext.Cancelled() {
+		if err := hbic.CancellableContext.Err(); err != nil {
+			errReason = fmt.Sprintf("cancelled due to: %+v", errors.RichError(err))
+		}
+	} else {
+		hbic.CancellableContext.Cancel(nil)
+	}
+
+	if len(errReason) > 0 {
+		glog.Errorf("HBI %s disconnecting due to error: %s", hbic.netIdent, errReason)
+		if trySendPeerError {
+			if _, e := hbic.wire.SendPacket(errReason, "err"); e != nil {
+				glog.Warningf("Failed sending peer error %s - %+v", errReason, errors.RichError(e))
+			}
+		}
+	}
+}
+
+func (hbic *HBIC) Cancel(err error) {
+	if err == nil {
+		hbic.Disconnect("", false)
+	} else {
+		hbic.Disconnect(fmt.Sprintf("%+v", err), true)
+	}
+}
+
+func (hbic *HBIC) Close() {
+	hbic.Disconnect("", false)
+}
+
+func (hbic *HBIC) sendPacket(payload, wireDir string) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+			errReason := fmt.Sprintf("%+v", err)
+			hbic.Disconnect(errReason, false)
+		}
+	}()
+	_, err = hbic.wire.SendPacket(payload, wireDir)
+	return
+}
+
+func (hbic *HBIC) sendData(d []byte) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+			errReason := fmt.Sprintf("%+v", err)
+			hbic.Disconnect(errReason, false)
+		}
+	}()
+	_, err = hbic.wire.SendData(d)
+	return
+}
+
+func (hbic *HBIC) sendStream(ds <-chan []byte) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+			errReason := fmt.Sprintf("%+v", err)
+			hbic.Disconnect(errReason, false)
+		}
+	}()
+	_, err = hbic.wire.SendStream(ds)
+	return
+}
+
+func (hbic *HBIC) recvData(d []byte) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+			errReason := fmt.Sprintf("%+v", err)
+			hbic.Disconnect(errReason, false)
+		}
+	}()
+	_, err = hbic.wire.RecvData(d)
+	return
+}
+
+func (hbic *HBIC) recvStream(ds <-chan []byte) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+			errReason := fmt.Sprintf("%+v", err)
+			hbic.Disconnect(errReason, false)
+		}
+	}()
+	_, err = hbic.wire.RecvStream(ds)
+	return
+}
+
+func (hbic *HBIC) NewPoCo() (co *PoCo, err error) {
+	co = (*PoCo)(hbic.coEnqueue(""))
+
+	err = hbic.sendPacket(co.CoSeq(), "co_begin")
+	return
+}
+
+func (hbic *HBIC) coEnd(co *coState, popOff bool) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql < 1 {
+		panic(errors.New("coq empty"))
+	}
+	if co != &hbic.coq[ql-1] {
+		panic(errors.New("co mismatch coq tail"))
+	}
+
+	// close this conversation's ended channel, so next pending enqueued conversation
+	// get the signal to procede get enqueued.
+	close(co.sendDone)
+
+	if popOff {
+		hbic.coq = hbic.coq[:ql-1]
+	}
+}
+
+func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql > 0 {
+		// wait tail co closed before a new co can be enqueued
+		prevCo := hbic.coq[ql-1]
+
+		func() {
+			// release muCo during waiting for prevCo to be closed,
+			// or `coEnd()` on prevCo will deadlock.
+			hbic.muCo.Unlock()
+			defer hbic.muCo.Lock()
+
+			select {
+			case <-hbic.Done():
+				err := hbic.Err()
+				if err == nil {
+					err = errors.New("hbic disconnected")
+				}
+				panic(err)
+			case <-prevCo.sendDone:
+				// normal case
+			}
+		}()
+	}
+
+	// these'll be kept nil for ho co, only assigned for po co
+	var (
+		beginAcked chan struct{}
+
+		roq chan interface{}
+		rdq chan []byte
+	)
+
+	isHoCo := len(coSeq) > 0
+	if isHoCo {
+		// creating a new ho co with coSeq received from peer
+		if hbic.ho.co != nil {
+			panic("unclean co_begin")
+		}
+	} else {
+		// creating a new po co, assign a new coSeq at this endpoint
+		coSeq = fmt.Sprintf("%d", hbic.nextCoSeq)
+		hbic.nextCoSeq++
+		if hbic.nextCoSeq > details.MaxCoSeq {
+			hbic.nextCoSeq = details.MinCoSeq
+		}
+		// these are only used for a po co
+		beginAcked = make(chan struct{})
+		roq = make(chan interface{})
+		rdq = make(chan []byte)
+	}
+
+	hbic.coq = append(hbic.coq, coState{
+		// common fields
+		hbic: hbic, coSeq: coSeq, sendDone: make(chan struct{}),
+		// po co only fields
+		beginAcked: beginAcked, roq: roq, rdq: rdq,
+	})
+	co = &hbic.coq[len(hbic.coq)-1] // do NOT use `ql` here, that's outdated if last co is a ho co
+
+	if isHoCo { // assign here with muCo locked
+		hbic.ho.co = (*HoCo)(co)
+	}
+
+	return
+}
+
+func (hbic *HBIC) coAssertSender(co *coState) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql < 1 {
+		panic(errors.New("coq empty"))
+	}
+	if co != &hbic.coq[ql-1] {
+		panic(errors.New("co mismatch coq tail"))
+	}
+}
+
+func (hbic *HBIC) coPeek(errIfNone string) (co *coState) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql < 1 {
+		panic(errIfNone)
+	}
+
+	co = &hbic.coq[0]
+	return
+}
+
+func (hbic *HBIC) coAssertReceiver(co *coState) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql < 1 {
+		panic(errors.New("coq empty"))
+	}
+	if co != &hbic.coq[0] {
+		panic(errors.New("co mismatch coq head"))
+	}
+}
+
+func (hbic *HBIC) coDequeue() (co *coState) {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	ql := len(hbic.coq)
+	if ql < 1 {
+		panic("coq empty")
+	}
+
+	co = &hbic.coq[0]
+	hbic.coq = hbic.coq[1:]
+	return
+}
+
+// NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
+func NewConnection(wire HBIWire, env *he.HostingEnv) (*PostingEnd, *HostingEnd, error) {
+	hbic := &HBIC{
 		CancellableContext: NewCancellableContext(),
 
-		wire:       wire,
-		netIdent:   wire.NetIdent(),
-		remoteAddr: wire.RemoteAddr(),
+		wire:     wire,
+		netIdent: wire.NetIdent(),
 
 		nextCoSeq: details.MinCoSeq,
 	}
-	ho := &hostingEnd{
-		CancellableContext: NewCancellableContext(),
+	po := &PostingEnd{
+		hbic: hbic,
 
-		he: he,
+		remoteAddr: wire.RemoteAddr(),
+	}
+	ho := &HostingEnd{
+		hbic: hbic,
+		env:  env,
 
-		wire:      wire,
-		netIdent:  wire.NetIdent(),
 		localAddr: wire.LocalAddr(),
 	}
+	hbic.po, hbic.ho = po, ho
 
-	// will this create too much difficulty for GC ?
-	po.ho, ho.po = ho, po
+	initDone := make(chan error)
+	// run the landing thread in a dedicated goroutine
+	go hbic.landingThread(initDone)
 
+	if err, ok := <-initDone; ok && err != nil {
+		return nil, nil, err
+	}
+
+	return po, ho, nil
+}
+
+func (hbic *HBIC) landingThread(initDone chan<- error) {
 	var (
-		ok          bool
+		err error
+		ok  bool
+
+		wire   = hbic.wire
+		po, ho = hbic.po, hbic.ho
+		env    = ho.env
+
+		pkt *Packet
+
+		discReason       string
+		trySendPeerError = true
+
 		initFunc    InitMagicFunction
 		cleanupFunc CleanupMagicFunction
 	)
 
-	if initMagic := he.Get("__hbi_init__"); initMagic != nil {
-		if initFunc, ok = initMagic.(InitMagicFunction); !ok {
-			panic(errors.Errorf("Bad __hbi_init__() type: %T", initMagic))
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
 		}
-	}
 
-	if cleanupMagic := he.Get("__hbi_cleanup__"); cleanupMagic != nil {
-		if cleanupFunc, ok = cleanupMagic.(CleanupMagicFunction); !ok {
-			panic(errors.Errorf("Bad __hbi_cleanup__() type: %T", cleanupMagic))
+		if len(discReason) > 0 {
+			if err == nil {
+				err = errors.New(discReason)
+			}
+		} else if err != nil {
+			discReason = fmt.Sprintf("landing error: %+v", err)
 		}
-	}
 
-	if initFunc != nil {
+		// finally disconnect wire on landing thread terminated
+		hbic.Disconnect(discReason, trySendPeerError)
+
+		if len(discReason) > 0 {
+			glog.Errorf("Last HBI packet (possibly responsible for failure): %+v", pkt)
+		}
+
+		if cleanupFunc != nil { // call cleanup callback after disconnected
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						glog.Warningf("HBIC %s cleanup callback failure ignored: %+v",
+							hbic.netIdent, errors.RichError(e))
+					}
+				}()
+
+				cleanupFunc(discReason)
+			}()
+		}
+	}()
+
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				err = errors.RichError(e)
+			}
+
+			if err != nil {
+				// send the error to `NewConnection()`
+				initDone <- err
+			}
+			// close `initDone` in all cases after init,
+			// for `NewConnection()` to return as expected.
+			close(initDone)
+		}()
+
+		if initMagic := env.Get("__hbi_init__"); initMagic != nil {
+			if initFunc, ok = initMagic.(InitMagicFunction); !ok {
+				panic(errors.Errorf("Bad __hbi_init__() type: %T", initMagic))
+			}
+		}
+
+		if cleanupMagic := env.Get("__hbi_cleanup__"); cleanupMagic != nil {
+			if cleanupFunc, ok = cleanupMagic.(CleanupMagicFunction); !ok {
+				panic(errors.Errorf("Bad __hbi_cleanup__() type: %T", cleanupMagic))
+			}
+		}
+
+		if initFunc == nil {
+			return
+		}
+
 		func() {
 			defer func() {
 				if e := recover(); e != nil {
-					err := errors.RichError(e)
-					errReason := fmt.Sprintf("init callback failed: %+v", err)
-
-					ho.Disconnect(errReason, true)
-
-					if cleanupFunc != nil {
-						func() {
-							defer func() {
-								if e := recover(); e != nil {
-									glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, err)
-								}
-							}()
-
-							cleanupFunc(err)
-						}()
-					}
+					err = errors.RichError(e)
+					discReason = fmt.Sprintf("init callback failed: %+v", err)
 				}
 			}()
 
 			initFunc(po, ho)
 		}()
+	}()
+
+	// terminate if init failed
+	if err != nil || len(discReason) > 0 {
+		return
 	}
 
-	// run landing loop in a dedicated goroutine
-	go func() {
-		var (
-			pkt              *Packet
-			err              error
-			trySendPeerError = true
-		)
+	for !hbic.Cancelled() {
+		if err != nil || len(discReason) > 0 {
+			panic("?!")
+		}
 
-		defer func() {
-			if e := recover(); e != nil {
-				err = errors.RichError(e)
-			} else if err != nil {
-				err = errors.RichError(err)
+		pkt, err = wire.RecvPacket()
+		if err != nil {
+			if err == io.EOF {
+				// wire disconnected by peer, break landing loop
+				err = nil // not considered an error
 			}
+			return
+		}
+		var result interface{}
 
-			if err != nil {
-				// error occurred, log & disconnect
-				errReason := fmt.Sprintf("HBI landing error:\n%+v\nHBI Packet: %+v", err, pkt)
-				glog.Error(errReason)
-				ho.Disconnect(errReason, trySendPeerError)
-			} else {
-				// normal disconnection
-				if glog.V(1) {
-					glog.Infof("HBI %s landing loop stopped.", ho.netIdent)
-				}
-				ho.Close()
-			}
+		switch pkt.WireDir {
+		case "co_begin":
 
-			if cleanupFunc != nil {
-				func() {
-					defer func() {
-						if e := recover(); e != nil {
-							glog.Warningf("HBI %s cleanup callback failure ignored: %+v", netIdent, err)
-						}
-					}()
+			hbic.coEnqueue(pkt.Payload) // ho.co is assigned inside with muCo locked
 
-					cleanupFunc(err)
-				}()
-			}
-		}()
-
-		for !ho.Cancelled() {
-
-			pkt, err = wire.RecvPacket()
-			if err != nil {
-				if err == io.EOF {
-					// normal case for peer closed connection
-					err = nil
-				}
+			if _, err = hbic.wire.SendPacket(pkt.Payload, "co_ack_begin"); err != nil {
+				trySendPeerError = false
 				return
 			}
-			var result interface{}
 
-			switch pkt.WireDir {
-			case "":
+		case "":
 
-				if _, err = ho.Exec(pkt.Payload); err != nil {
-					return
-				}
+			// peer is pushing the textual code for side-effect of its landing
 
-			case "co_send":
-
-				if result, err = ho.Exec(pkt.Payload); err != nil {
-					return
-				}
-				if _, err = wire.SendPacket(fmt.Sprintf("%#v", result), "co_recv"); err != nil {
-					trySendPeerError = false
-					return
-				}
-
-			case "co_recv":
-
-				if ho.co != nil { // in case the ho co should receive an object, there should be
-					// the receiving-code running nested in `ho.Exec()` calls from either of the
-					// 2 cases above, and the receiving-code should call `HoCo.RecvObj()` which in
-					// turn calls `co.recvObj()` where a nested landing loop will run.
-					err = errors.New("an obj sent to the ho co but no prior receiving-code running")
-					return
-					// todo: should we use an app queue to allow objects be sent prior to the receiving-code?
-
-					// that behavior is supported by the python/asyncio implementation as a side-effect,
-					// coz reading from asyncio.transport is pushed.
-					// while golang tcp transport is read as per app's decision, the app queue is not necessary.
-
-					// for binary data/stream to be received, there's no way for data comes prior to
-					// receiving-code, it's the receiving-code's responsibility to know correct data/stream
-					// length. so it's natural to expect objects (landed by code) to be sent then received
-					// the same way.
-				}
-
-				// no ho co means the sent object meant to be received by
-				recvCo := ho.po.coPeek()
-				if result, err = ho.Exec(pkt.Payload); err != nil {
-					return
-				}
-				recvCo.respObj <- result
-
-			case "co_begin":
-
-				ho.co = (*HoCo)(ho.po.coEnqueue(pkt.Payload))
-
-				if _, err = ho.po.wire.SendPacket(pkt.Payload, "co_ack_begin"); err != nil {
-					trySendPeerError = false
-					return
-				}
-
-			case "co_end":
-
-				if ho.co == nil || ho.co.coSeq != pkt.Payload {
-					panic("ho co mismatch")
-				}
-				ho.po.coAssertSender((*coState)(ho.co))
-
-				ho.po.coEnd((*coState)(ho.co), true)
-
-				if _, err = ho.po.wire.SendPacket(pkt.Payload, "co_ack_end"); err != nil {
-					trySendPeerError = false
-					return
-				}
-
-				ho.co = nil
-
-			case "co_ack_begin":
-
-				recvCo := ho.po.coPeek()
-				if recvCo.coSeq != pkt.Payload {
-					panic("mismatch co_ack_begin")
-				}
-
-				// signal start of response to the head po co.
-				// this is crucial in case the po co expects binary data/stream come
-				// before any textual code packet if any at all. and in other cases, i.e.
-				// no response expected at all, or receiving-code (in form of textual
-				// code packet) come first, this is of no use.
-				close(recvCo.respBegan)
-
-			case "co_ack_end":
-
-				recvCo := ho.po.coDequeue()
-				if recvCo.coSeq != pkt.Payload {
-					panic("mismatch co_ack_end")
-				}
-
-				close(recvCo.respObj)
-
-			case "err":
-
-				ho.Disconnect(fmt.Sprintf("peer error: %s", pkt.Payload), false)
+			if _, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
 				return
-
-			default:
-
-				panic("Unexpected packet")
-
 			}
+
+		case "co_send":
+
+			// peer is requesting this end to push landed result (in textual code) back
+
+			if result, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+				return
+			}
+			if _, err = wire.SendPacket(fmt.Sprintf("%#v", result), "co_recv"); err != nil {
+				trySendPeerError = false
+				return
+			}
+
+		case "co_recv":
+
+			// `ho.co` is always assigned from this landing thread, no sync necessary to read it
+			if ho.co != nil { // pushing obj to a ho co
+				discReason = "co_recv without priori receiving code in landing"
+				return
+			}
+
+			// no ho co means the sent object meant to be received by a po co
+
+			// nor a po co to recv the pushed obj if coq empty
+			recvCo := hbic.coPeek("no conversation to receive object")
+
+			// pushing obj to a po co
+			if result, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+				return
+			}
+			recvCo.roq <- result
+
+		case "co_end":
+
+			hbic.muCo.Lock()
+			co := ho.co
+			ho.co = nil
+			hbic.muCo.Unlock()
+
+			if co == nil || co.coSeq != pkt.Payload {
+				panic("ho co mismatch")
+			}
+			hbic.coAssertSender((*coState)(co))
+
+			hbic.coEnd((*coState)(co), true)
+
+			if _, err = hbic.wire.SendPacket(pkt.Payload, "co_ack_end"); err != nil {
+				trySendPeerError = false
+				return
+			}
+
+		case "co_ack_begin":
+
+			recvCo := hbic.coPeek("po co lost")
+			if recvCo.coSeq != pkt.Payload {
+				panic("mismatch co_seq")
+			}
+
+			close(recvCo.beginAcked)
+
+		case "po_data":
+
+			// `ho.co` is always assigned from this landing thread, no sync necessary to read it
+			if ho.co != nil { // pushing data/stream to a ho co
+				discReason = "po_data to a ho co"
+				return
+			}
+
+			// no ho co means the sent data/stream meant to be received by a po co
+
+			// nor a po co to recv the pushed data if coq empty
+			recvCo := hbic.coPeek("no po co to receive data")
+
+			// pushing data/stream to a po co
+			hbic.recvStream(recvCo.rdq)
+
+		case "co_ack_end":
+
+			recvCo := hbic.coDequeue()
+			if recvCo.coSeq != pkt.Payload {
+				panic("mismatch co_seq")
+			}
+
+			close(recvCo.roq)
+			close(recvCo.rdq)
+
+		case "err":
+
+			discReason = fmt.Sprintf("peer error: %s", pkt.Payload)
+			trySendPeerError = false
+			return
+
+		default:
+
+			discReason = fmt.Sprintf("HBIC unexpected packet: %+v", pkt)
+			return
+
+		}
+	}
+}
+
+func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
+	var (
+		wire = hbic.wire
+		env  = hbic.ho.env
+
+		pkt *Packet
+
+		discReason       string
+		trySendPeerError = true
+	)
+
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.RichError(e)
+		} else if err != nil {
+			err = errors.RichError(err)
+		}
+
+		if len(discReason) > 0 {
+			if err == nil {
+				err = errors.New(discReason)
+			}
+		} else if err != nil {
+			discReason = fmt.Sprintf("recv landing error: %+v", err)
+		}
+
+		if len(discReason) > 0 {
+			hbic.Disconnect(discReason, trySendPeerError)
 		}
 	}()
 
-	return po, ho
+	for {
+		if err != nil || len(discReason) > 0 {
+			panic("?!")
+		}
+
+		pkt, err = wire.RecvPacket()
+		if err != nil {
+			return
+		}
+
+		switch pkt.WireDir {
+		case "co_recv":
+
+			// the very expected packet
+
+			obj, err = env.RunInEnv(pkt.Payload, hbic)
+			return
+
+		case "":
+
+			// some code to execute preceding code for obj to be received.
+			// todo this harmful and be explicitly disallowed ?
+
+			if _, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+				return
+			}
+
+		case "err":
+
+			discReason = fmt.Sprintf("peer error: %s", pkt.Payload)
+			trySendPeerError = false
+			return
+
+		case "co_send":
+
+			discReason = "issued co_send before sending an object expected by prior receiving-code"
+			return
+
+		default:
+
+			discReason = fmt.Sprintf("HBIC unexpected packet: %+v", pkt)
+			return
+
+		}
+	}
 }

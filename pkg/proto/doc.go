@@ -8,7 +8,7 @@ package proto
 //
 // note: this interface should really be defined in `he` package, but that'll
 // create cyclic imports between `proto` and `he`.
-type InitMagicFunction = func(po PostingEnd, ho HostingEnd)
+type InitMagicFunction = func(po *PostingEnd, ho *HostingEnd)
 
 // CleanupMagicFunction is the prototype for magic functions to be called on HBI
 // wire disconnected.
@@ -17,4 +17,4 @@ type InitMagicFunction = func(po PostingEnd, ho HostingEnd)
 //
 // note: this interface should really be defined in `he` package, but that'll
 // create cyclic imports between `proto` and `he`.
-type CleanupMagicFunction = func(err error)
+type CleanupMagicFunction = func(discReason string)
