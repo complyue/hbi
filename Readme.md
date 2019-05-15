@@ -56,26 +56,27 @@ a _FIRE-AND-FORGET_ conversation. But `posting stage` is only the `request` part
 `request/response` pattern, `response`s are destined to be received and processed in many
 real-world cases, and `response`, if expected, is to be received during the `after-posting stage`.
 
-As the peer sees inbound traffic about the conversation, it establishes a `hosting-conversation`
-to accommodate the `landing` of _peer-scripting-code_ received.
+As the other peer sees inbound traffic about the conversation, it establishes a
+`hosting-conversation` to accommodate the `landing` of _peer-scripting-code_ received.
 
 A `hosting conversation` has just 1 stage, naming is not necessary but just call it
 `hosting stage`. During the `hosting stage`, the hosting peer uses its `hosting environment`
 to `land` whatever textual code sent by the posting peer.
 
 `landing` is simply the execution of textual scripting code, with the chosen programming
-language / runtime, with the `hosting envrionment` as context. e.g. `exec()` is used with
-Python, and [Anko interpreter](https://github.com/mattn/anko "Anko's Github Home") is used
-with Golang.
+language / runtime, with the `hosting envrionment` as context. e.g.
+[exec()](https://docs.python.org/3/library/functions.html#exec) is used with Python, and
+[Anko interpreter](https://github.com/mattn/anko "Anko's Github Home") is used with Golang.
 
-The `hosting environment` of the hosting peer is openly accessible by the _peer-scripting-code_
-from the remote peer, to the extent the local peer is willing of exposure.
+The `hosting environment` of one peer is openly accessible by the _peer-scripting-code_
+sent from the other peer, to the extent the former peer is willing of exposure.
 
 The _peer-scripting-code_ just executes as being `landed`, it scripts the hosting peer
-for desired behavior.
-Another responsibility of the _peer-scripting-code_ is that: if binary data/stream follows,
-it needs to receive or streamline the data properly, and with such responsibilities, it is
-called `receiving-code`.
+for desired impacts by the posting peer.
+
+    One extra optional responsibility of the _peer-scripting-code_ is that: if binary
+    data/stream follows, the priori sent code _MUST_ receive or streamline the data
+    properly, and bearing such responsibilities, it is then called `receiving-code`.
 
 There normally occur subsequences as the hosting peer is being scripted to do anything,
 e.g. in case the posting peer is a software agent in behalf of its user to start a live
