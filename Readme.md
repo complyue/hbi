@@ -79,12 +79,14 @@ The _peer-scripting-code_ instructs about all those things as _WHAT_ to do, and 
 
 Theoretically every artifact exposed by the hosting environment is a `function`, which takes
 specific number/type of arguments, generates side-effects, and returns specific number/type
-of result(s). While with Object-Oriented programming paradigm, there arose some types of
-`function`s carrying special semantics:
+of result (no return in case the number is zero).
+
+While with Object-Oriented programming paradigm, there arose more types of `function`s that
+carrying special semantics:
 
 - `constructor` function:
 
-  that creates a new (tho not strictly necessary) object on each call
+  that creates a new (tho not strictly necessary newly allocated) object on each call
 
   Note:
   In HBI paradigm the `new` keyword should not appear for invocation of
@@ -95,11 +97,17 @@ of result(s). While with Object-Oriented programming paradigm, there arose some 
 
   that has a `reactor` object bound to it
 
-The implementation of a `function` exposed by a `hosting environment`, normally does
-leverage the `hosting conversation` to send another set of _peer-scripting-code_, optionally
-with binary data/stream, back to the posting peer, for the subsequences be realized at the
-posting site. This set of _peer-scripting-code_ and data/stream if present is `landed`
-during the `after-posting stage` of the peer's original `posting conversation`.
+  Meaning it has an implicit argument referencing the `reactor object`, in addition to its
+  formal arguments.
+
+The implementation of a `function` exposed by a `hosting environment`, normally (the exact
+case that `response` is expected) does leverage the `hosting conversation` to send another
+set of _peer-scripting-code_, optionally with binary data/stream (the `response`), back to
+the posting peer, for the subsequences be realized at the posting site.
+
+This set of _peer-scripting-code_ (plus data/stream if present), is `landed` (meaning
+received & processed) during the `after-posting stage` of the peer's original
+`posting conversation`, as mentioned in earlier paragrah of the section.
 
 Additionally, the implementation can schedule more activities to happen later, and any
 activity can then start new `posting conversation`s to the _OP_, i.e. communication in the
