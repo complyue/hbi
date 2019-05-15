@@ -116,8 +116,8 @@ set of _peer-scripting-code_, optionally with binary data/stream (the `response`
 the posting peer, for the subsequences be realized at the posting site.
 
 This set of _peer-scripting-code_ (plus data/stream if present), is `landed` (meaning
-received & processed) during the `after-posting stage` of the peer's original
-`posting conversation`, as mentioned in earlier paragrah of the section.
+received & processed) during the `after-posting stage` of the posting peer's original
+`posting conversation`, as mentioned in earlier paragrah of this section.
 
 Additionally, the implementation can schedule more activities to happen later, and any
 activity can then start new `posting conversation`s to the _OP_, i.e. communication in the
@@ -158,6 +158,6 @@ Concurrent conversations can work upon QUIC streams, coming sooner than later ..
 - Decided to `recv` with a posting conversation, _ONLY_ do during the `after-posting stage`.
 
   Note: though you are not technically prevented to `recv` during the `posting stage`,
-  doing so will pend the underlying wire, stop pipeling of dataflow, thus harm
-  a lot to overall throughput. And might be taking more chances to create
+  doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
+  to overall throughput. And might even be taking more chances to create
   [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
