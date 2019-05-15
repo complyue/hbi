@@ -39,7 +39,9 @@ the `posting endpoint` and the `hosting endpoint`. A peer is said to be acting a
 when doing sending works with its `posting endpoint`, and is conversely said to be
 acting passively when doing receiving (`landing`) works with its `hosting endpoint`.
 
-At any time, either peer can initiate a `posting conversation` for active communication.
+At any time, either peer can initiate a `posting conversation` for active communication,
+in response to that, a `hosting conversation` will be triggered at the other peer, for
+passive communication.
 
 A `posting conversation` has 2 stages, -- the `posting stage` and the `after-posting stage`.
 During the `posting stage`, _peer-scripting-code_, i.e. textual code meant to be `landed`
@@ -54,7 +56,7 @@ a _FIRE-AND-FORGET_ conversation. But `posting stage` is only the `request` part
 `request/response` pattern, `response`s are destined to be received and processed in many
 real-world cases, and `response`, if expected, is to be received during the `after-posting stage`.
 
-As the peer sees incoming traffic about the conversation, it establishes a `hosting-conversation`
+As the peer sees inbound traffic about the conversation, it establishes a `hosting-conversation`
 to accommodate the `landing` of _peer-scripting-code_ received.
 
 A `hosting conversation` has just 1 stage, naming is not necessary but just call it
@@ -67,7 +69,7 @@ Python, and [Anko interpreter](https://github.com/mattn/anko "Anko's Github Home
 with Golang.
 
 The `hosting environment` of the hosting peer is openly accessible by the _peer-scripting-code_
-from the posting peer, to the extent the hosting peer is willing of exposure.
+from the remote peer, to the extent the local peer is willing of exposure.
 
 The _peer-scripting-code_ just executes as being `landed`, it scripts the hosting peer
 for desired behavior.
