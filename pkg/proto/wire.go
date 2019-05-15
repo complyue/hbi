@@ -8,11 +8,11 @@ type HBIWire interface {
 
 	SendPacket(payload, wireDir string) (n int64, err error)
 	SendData(d []byte) (n int64, err error)
-	SendStream(ds <-chan []byte) (n int64, err error)
+	SendStream(ds func() []byte) (n int64, err error)
 
 	RecvPacket() (packet *Packet, err error)
 	RecvData(d []byte) (n int64, err error)
-	RecvStream(ds <-chan []byte) (n int64, err error)
+	RecvStream(ds func() []byte) (n int64, err error)
 
 	Disconnect()
 }

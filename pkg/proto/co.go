@@ -13,12 +13,12 @@ type Conver interface {
 
 	SendCode(code string) error
 	SendObj(code string) error
-	SendData(buf []byte) error
-	SendStream(data <-chan []byte) error
+	SendData(d []byte) error
+	SendStream(ds func() []byte) error
 
 	RecvObj() (obj interface{}, err error)
-	RecvData(buf []byte) error
-	RecvStream(data <-chan []byte) error
+	RecvData(d []byte) error
+	RecvStream(ds func() []byte) error
 
 	// Closed returns a channel that get closed when all its out sending activities have finished.
 	//
@@ -69,7 +69,7 @@ func (co *PoCo) SendData(d []byte) error {
 	return co.hbic.sendData(d)
 }
 
-func (co *PoCo) SendStream(ds <-chan []byte) error {
+func (co *PoCo) SendStream(ds func() []byte) error {
 	co.hbic.coAssertSender((*coState)(co))
 
 	return co.hbic.sendStream(ds)
@@ -124,7 +124,7 @@ func (co *PoCo) RecvData(d []byte) error {
 	return nil
 }
 
-func (co *PoCo) RecvStream(ds <-chan []byte) error {
+func (co *PoCo) RecvStream(ds func() []byte) error {
 	// wait co_ack_begin from peer
 	select {
 	case <-co.hbic.Done():
@@ -135,7 +135,12 @@ func (co *PoCo) RecvStream(ds <-chan []byte) error {
 	// must be the receiving conversation now
 	co.hbic.coAssertReceiver((*coState)(co))
 
-	for d := range ds {
+	for {
+		d := ds()
+		if d == nil {
+			// all data received
+			break
+		}
 		select {
 		case <-co.hbic.Done():
 			return errors.New("disconnected")
@@ -192,7 +197,7 @@ func (co *HoCo) SendData(d []byte) error {
 	return co.hbic.sendData(d)
 }
 
-func (co *HoCo) SendStream(ds <-chan []byte) error {
+func (co *HoCo) SendStream(ds func() []byte) error {
 	co.hbic.coAssertSender((*coState)(co))
 
 	return co.hbic.sendStream(ds)
@@ -210,7 +215,7 @@ func (co *HoCo) RecvData(d []byte) error {
 	return co.hbic.recvData(d)
 }
 
-func (co *HoCo) RecvStream(ds <-chan []byte) error {
+func (co *HoCo) RecvStream(ds func() []byte) error {
 	co.hbic.coAssertReceiver((*coState)(co))
 
 	return co.hbic.recvStream(ds)

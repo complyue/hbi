@@ -147,9 +147,9 @@ func (wire *TCPWire) SendData(d []byte) (n int64, err error) {
 	return
 }
 
-// SendStream pulls all `[]byte` from the specified channel and sends them as binary stream to peer endpoint.
+// SendStream pulls all `[]byte` from the specified func and sends them as binary stream to peer endpoint.
 // each `[]byte` will have its len() of data sent, regardless of its cap().
-func (wire *TCPWire) SendStream(ds <-chan []byte) (n int64, err error) {
+func (wire *TCPWire) SendStream(ds func() []byte) (n int64, err error) {
 	if glog.V(3) {
 		defer func() {
 			glog.Infof("HBI wire %s sent binary data of %d bytes.",
@@ -159,28 +159,25 @@ func (wire *TCPWire) SendStream(ds <-chan []byte) (n int64, err error) {
 	var bufs net.Buffers
 	var nb int64
 	for {
-		select {
-		case d, ok := <-ds:
-			if !ok {
-				// no more buf to send
+		d := ds()
+		if d == nil {
+			// no more buf to send
+			break
+		}
+		if len(d) <= 0 {
+			// ignore zero sized buf
+			continue
+		}
+		bufs = append(bufs, d)
+		for len(bufs) > 0 {
+			nb, err = bufs.WriteTo(wire.conn)
+			if err != nil {
 				return
 			}
-			if len(d) <= 0 {
-				// zero buf, ignore it
-				break
-			}
-			bufs = append(bufs, d)
+			n += nb
 		}
-		if len(bufs) <= 0 {
-			// all data sent
-			return
-		}
-		nb, err = bufs.WriteTo(wire.conn)
-		if err != nil {
-			return
-		}
-		n += nb
 	}
+	return
 }
 
 // RecvPacket receives next packet from peer endpoint.
@@ -364,9 +361,9 @@ func (wire *TCPWire) RecvData(d []byte) (n int64, err error) {
 	return
 }
 
-// RecvStream receives binary data stream into all `[]byte` from the specified channel.
+// RecvStream receives binary data stream into all `[]byte` from the specified func.
 // each []byte will be filled up to its len(), regardless of its cap().
-func (wire *TCPWire) RecvStream(ds <-chan []byte) (n int64, err error) {
+func (wire *TCPWire) RecvStream(ds func() []byte) (n int64, err error) {
 	if glog.V(3) {
 		defer func() {
 			glog.Infof("HBI wire %s received binary data of %d bytes.",
@@ -375,51 +372,49 @@ func (wire *TCPWire) RecvStream(ds <-chan []byte) (n int64, err error) {
 	}
 	var nb int
 	for {
-		select {
-		case d, ok := <-ds:
-			if !ok {
-				// no more buf to send
+		d := ds()
+		if d == nil {
+			// no more buf to recv
+			return
+		}
+		if len(d) <= 0 {
+			// ignore zero sized buf
+			continue
+		}
+		for {
+			if wire.readahead != nil {
+				if len(d) <= len(wire.readahead) {
+					nb = len(d)
+					copy(d, wire.readahead[:nb])
+					if nb == len(wire.readahead) {
+						wire.readahead = nil
+					} else {
+						wire.readahead = wire.readahead[nb:]
+					}
+					n += int64(nb)
+					// this buf fully filed by readahead data
+					break
+				} else {
+					nb = len(wire.readahead)
+					copy(d[:nb], wire.readahead)
+					// this buf only partial filled by readahead data,
+					// read rest from wire
+					d = d[nb:]
+					wire.readahead = nil
+					n += int64(nb)
+				}
+			}
+			nb, err = wire.conn.Read(d)
+			if err != nil {
 				return
 			}
-			if len(d) <= 0 {
-				// zero buf, ignore it
+			n += int64(nb)
+			if nb >= len(d) {
+				// this buf fully filled
 				break
 			}
-			for {
-				if wire.readahead != nil {
-					if len(d) <= len(wire.readahead) {
-						nb = len(d)
-						copy(d, wire.readahead[:nb])
-						if nb == len(wire.readahead) {
-							wire.readahead = nil
-						} else {
-							wire.readahead = wire.readahead[nb:]
-						}
-						n += int64(nb)
-						// this buf fully filed by readahead data
-						break
-					} else {
-						nb = len(wire.readahead)
-						copy(d[:nb], wire.readahead)
-						// this buf only partial filled by readahead data,
-						// read rest from wire
-						d = d[nb:]
-						wire.readahead = nil
-						n += int64(nb)
-					}
-				}
-				nb, err = wire.conn.Read(d)
-				if err != nil {
-					return
-				}
-				n += int64(nb)
-				if nb >= len(d) {
-					// this buf fully filled
-					break
-				}
-				// read into rest space
-				d = d[nb:]
-			}
+			// read into rest space
+			d = d[nb:]
 		}
 	}
 }
