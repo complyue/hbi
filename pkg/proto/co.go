@@ -97,8 +97,6 @@ func (co *PoCo) RecvObj() (obj interface{}, err error) {
 			err = errors.New("no obj sent from peer hosting conversation")
 			return
 		}
-		// must still be the receiving conversation now
-		co.hbic.coAssertReceiver((*coState)(co))
 		obj = result
 	}
 
