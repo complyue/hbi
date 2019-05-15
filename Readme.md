@@ -157,7 +157,7 @@ Concurrent conversations can work upon QUIC streams, coming sooner than later ..
 - Decided to do `recv`, _ONLY_ do with a hosting conversation,
 - Decided to `recv` with a posting conversation, _ONLY_ do during the `after-posting stage`.
 
-  Note: though you are not technically prevented to `recv` during the `posting stage`,
+  Note: But you are not technically prevented to `recv` during the `posting stage`, well
   doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
-  to overall throughput. And might even be taking more chances to create
+  to overall throughput. And you might even be taking more chances to create
   [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
