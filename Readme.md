@@ -35,7 +35,7 @@ acting passively when doing receiving (`landing`) works with its `hosting endpoi
 At any time, either peer can initiate a `posting conversation` for active communication.
 
 A `posting conversation` has 2 stages, -- the `posting stage` and the `after-posting stage`.
-During the `posting stage`, _peer scripting code_, i.e. textual code meant to be `landed`
+During the `posting stage`, _peer-scripting-code_, i.e. textual code meant to be `landed`
 by peer's `hosting environment` (more on this later), optionally with binary data/stream,
 are sent through the underlying transport/wire.
 
@@ -48,7 +48,7 @@ a _FIRE-AND-FORGET_ conversation. But `posting stage` is only the `request` part
 real-world cases, and `response`, if expected, is to be received during the `after-posting stage`.
 
 As the peer sees incoming traffic about the conversation, it establishes a `hosting-conversation`
-to accommodate the `landing` of _peer scripting code_ received.
+to accommodate the `landing` of _peer-scripting-code_ received.
 
 A `hosting conversation` has just 1 stage, naming is not necessary but just call it
 `hosting stage`. During the `hosting stage`, the hosting peer uses its `hosting environment`
@@ -59,12 +59,12 @@ language / runtime, with the `hosting envrionment` as context. e.g. `exec()` is 
 Python, and [Anko interpreter](https://github.com/mattn/anko "Anko's Github Home") is used
 with Golang.
 
-The `hosting environment` of the hosting peer is openly accessible by the _peer scripting code_
+The `hosting environment` of the hosting peer is openly accessible by the _peer-scripting-code_
 from the posting peer, to the extent the hosting peer is willing of exposure.
 
-The _peer scripting code_ just executes as being `landed`, it scripts the hosting peer
+The _peer-scripting-code_ just executes as being `landed`, it scripts the hosting peer
 for desired behavior.
-Another responsibility of the _peer scripting code_ is that: if binary data/stream follows,
+Another responsibility of the _peer-scripting-code_ is that: if binary data/stream follows,
 it needs to receive or streamline the data properly, and with such responsibilities, it is
 called `receiving-code`.
 
@@ -74,7 +74,7 @@ video casting, all the user's subscribers should be notified of the starting of 
 stream, and a streaming channel should be established to each ready subscriber, then the
 broadcaster should be notified how many subscribers will be watching.
 
-The _peer scripting code_ instructs about all those things as _WHAT_ to do, and the
+The _peer-scripting-code_ instructs about all those things as _WHAT_ to do, and the
 `hosting envirnoment` should expose enough artifacts implementing _HOW_ to do each of those.
 
 Theoretically every artifact exposed by the hosting environment is a `function`, which takes
@@ -96,9 +96,9 @@ of result(s). While with Object-Oriented programming paradigm, there arose some 
   that has a `reactor` object bound to it
 
 The implementation of a `function` exposed by a `hosting environment`, normally does
-leverage the `hosting conversation` to send another set of _peer scripting code_, optionally
+leverage the `hosting conversation` to send another set of _peer-scripting-code_, optionally
 with binary data/stream, back to the posting peer, for the subsequences be realized at the
-posting site. This set of _peer scripting code_ and data/stream if present is `landed`
+posting site. This set of _peer-scripting-code_ and data/stream if present is `landed`
 during the `after-posting stage` of the peer's original `posting conversation`.
 
 Additionally, the implementation can schedule more activities to happen later, and any
