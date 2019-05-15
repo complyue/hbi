@@ -25,6 +25,13 @@ Building new applications with `Hosting Based Interface` - HBI, the classic
 `request/response` pattern can go naturally & very efficiently without imposing the
 dreaded RTT (if done correctly, see Caveats).
 
+## In Action
+
+Checkout [HBI Chat](https://github.com/complyue/hbichat) and run it for fun.
+That project can be considered an
+[SSCCE](http://www.sscce.org/)
+HBI application.
+
 ## Mechanism
 
 An `HBI` communication channel (wire) works Peer-to-Peer, each peer has 2 endpoints:
@@ -120,13 +127,13 @@ Orchestration forms when multiple service/consumer nodes keep communicating p2p.
 Python 3.7+
 
 ```python
-
+# Coming sooner than later ...
 ```
 
 Go1
 
 ```go
-
+// Coming sooner than later ...
 ```
 
 ES6
@@ -149,4 +156,5 @@ Concurrent conversations can work upon QUIC streams, coming sooner than later ..
 
   Note: though you are not technically prevented to `recv` during the `posting stage`,
   doing so will pend the underlying wire, stop pipeling of dataflow, thus harm
-  a lot to overall throughput.
+  a lot to overall throughput. And might be taking more chances to create
+  [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
