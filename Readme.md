@@ -2,7 +2,7 @@
 
 ## The Problem
 
-### One Service On Behalf Of Many
+### One Service On Behalf of Many
 
 A human user thinks, between actions he/she will take to perform, and the thinking
 usually takes previous action's result into account. Waiting for result/response is
@@ -12,11 +12,11 @@ While most decent computer application systems comprise far more than a single s
 and even a lone service, are rather likely to be integrated with other systems/services
 into larger solutions, to be useful today.
 
-A **service** software typically act on behalf of many users concurrently, with main
-line scenarios involve coordianted operations with other **service**s in reaction to
-each user's each activity. This is largely different than a traditional **client**
-software which assumes single user's activities only. If every user activity wait,
-there will be just too much waitings.
+Such a **service** software typically act on behalf of many users concurrently, with main
+line scenarios involve coordinated operations with other **service**s in reaction to
+each user's each activity. This is largely different from a traditional **client**
+software which assumes single user's activities only. If every user activity is to be
+waited, there will be just too much waitings.
 
 ### Inter-Service Communication with request/response pattern
 
@@ -37,13 +37,14 @@ are addressing various issues,
 especially including the above said one, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
 
-Building new applications with \***\*Hosting Based Interface** - HBI, the classic
+Building new applications with **Hosting Based Interface** - HBI, the classic
 **request/response** pattern can go naturally & very efficiently without imposing the
 dreadful RTT (if done correctly, see Caveats).
 
-### RECV is Wait, No Wait At Best, so Avoid RECV
+### No Wait At Best, Replace Receiving with Hosting
 
-Active receiving is to wait, see Caveats.
+Active receiving is to wait, while hosting is no wait.
+It is better to be **HOSTING** rather than be **RECEIVING**.
 
 ## In Action
 
@@ -163,22 +164,22 @@ Go1
 ES6
 
 ```js
-// Coming later, not sooner ...
+// Coming later, if not sooner ...
 ```
 
 ### HBI over [QUIC](https://en.wikipedia.org/wiki/QUIC)
 
-Concurrent conversations can work upon QUIC streams, coming sooner than later ...
+Concurrent conversations can work upon QUIC streams, coming later, if not sooner ...
 
 ## Caveats
 
 ### For Overall Throughput
 
-- Do _NO_ **RECV** at best, be `landing` peer scripts instead,
-- Decided to do **RECV**, _ONLY_ do with a hosting conversation,
-- Decided to **RECV** with a posting conversation, _ONLY_ do during the `after-posting stage`.
+- Do **NO** **RECEIVING** at best, be **HOSTING** (i.e. **landing** peer scripts) instead,
+- Decided to do **RECEIVE**, **ONLY** do with a hosting conversation,
+- Decided to **RECEIVE** with a posting conversation, **ONLY** do during the `after-posting stage`.
 
-  Note: But you are not technically prevented to **RECV** during the `posting stage`, well
+  Note: But you are not technically prevented to **RECEIVE** during the `posting stage`, well
   doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
   to overall throughput. And you might even be taking more chances to create
   [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
