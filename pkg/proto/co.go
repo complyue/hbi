@@ -220,12 +220,18 @@ func (co *HoCo) SendObj(code string) error {
 func (co *HoCo) SendData(d []byte) error {
 	co.hbic.coAssertSender((*coState)(co))
 
+	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
+		return err
+	}
 	return co.hbic.sendData(d)
 }
 
 func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 	co.hbic.coAssertSender((*coState)(co))
 
+	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
+		return err
+	}
 	return co.hbic.sendStream(ds)
 }
 
