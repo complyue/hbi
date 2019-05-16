@@ -4,7 +4,7 @@ import (
 	"github.com/complyue/hbi/pkg/he"
 )
 
-// PostingEnd is the application programming interface of an HBI posting endpoint.
+// HostingEnd is the application programming interface of an HBI hosting endpoint.
 type HostingEnd struct {
 	hbic *HBIC
 

@@ -158,8 +158,12 @@ func (wire *TCPWire) SendStream(ds func() ([]byte, error)) (n int64, err error) 
 	}
 	var bufs net.Buffers
 	var nb int64
+	var d []byte
 	for {
-		d := ds()
+		d, err = ds()
+		if err != nil {
+			return
+		}
 		if d == nil {
 			// no more buf to send
 			break
@@ -371,8 +375,12 @@ func (wire *TCPWire) RecvStream(ds func() ([]byte, error)) (n int64, err error) 
 		}()
 	}
 	var nb int
+	var d []byte
 	for {
-		d := ds()
+		d, err = ds()
+		if err != nil {
+			return
+		}
 		if d == nil {
 			// no more buf to recv
 			return
