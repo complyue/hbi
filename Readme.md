@@ -1,18 +1,34 @@
 # Hosting Based Interface
 
-## Purpose
+## The Problem
 
-### request/response pattern for RPC/IPC and other Inter-Service Comm
+### One Service On Behalf Of Many
 
-A classical implementation of the classic `request/response` pattern, say `HTTP/1.x`,
+A human user thinks, between actions he/she will take to perform, and the thinking
+usually takes previous action's result into account. Waiting for result/response is
+a rather natural being in single user scenarios.
+
+While most decent computer application systems comprise far more than a single service,
+and even a lone service, are rather likely to be integrated with other systems/services
+into larger solutions, to be useful today.
+
+A **service** software typically act on behalf of many users concurrently, with main
+line scenarios involve coordianted operations with other **service**s in reaction to
+each user's each activity. This is largely different than a traditional **client**
+software which assumes single user's activities only. If every user activity wait,
+there will be just too much waitings.
+
+### Inter-Service Communication with request/response pattern
+
+A classical implementation of the classic **request/response** pattern, say `HTTP/1.x`,
 as the most typical example, is to pend subsequent out-bound transportation through
 the underlying transport, wait until the expected response has been sent back from
 peer endpoint, as in-bound transportation through the underlying transport, before
 the next request is let-go to start off.
 
 The result is that transports (tcp connections for HTTP), wasted too much time in
-RTT (round-trip time). That's why _MANY_ (yet _SMALL_) js/css files must be packed into
-_FEW_ (yet _LARGE_) ones for decent page loading time, while the total traffic amount is
+RTT (round-trip time). That's why **MANY** (yet **SMALL**) js/css files must be packed into
+**FEW** (yet **LARGE**) ones for decent page loading time, while the total traffic amount is
 almost the same.
 
 Newer protocols like `HTTP/2` and [QUIC](https://en.wikipedia.org/wiki/QUIC)
@@ -21,9 +37,13 @@ are addressing various issues,
 especially including the above said one, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
 
-Building new applications with `Hosting Based Interface` - HBI, the classic
-`request/response` pattern can go naturally & very efficiently without imposing the
-dreaded RTT (if done correctly, see Caveats).
+Building new applications with \***\*Hosting Based Interface** - HBI, the classic
+**request/response** pattern can go naturally & very efficiently without imposing the
+dreadful RTT (if done correctly, see Caveats).
+
+### RECV is Wait, No Wait At Best, so Avoid RECV
+
+Active receiving is to wait, see Caveats.
 
 ## In Action
 
@@ -48,12 +68,12 @@ During the `posting stage`, _peer-scripting-code_, i.e. textual code meant to be
 by peer's `hosting environment` (more on this later), optionally with binary data/stream,
 are sent through the underlying transport/wire.
 
-A `posting conversation` _SHOULD_ be `closed` as earlier as possible once all its sending works
+A `posting conversation` **SHOULD** be `closed` as earlier as possible once all its sending works
 are done, this actually releases the underlying transport/wire for other `posting conversation`s
 to start off. Upon `closed`, the `posting conversation` switches to its `after-posting stage`,
 there ideally be no activity at all to happen within the `after-posting stage`, which makes it
 a _FIRE-AND-FORGET_ conversation. But `posting stage` is only the `request` part of the
-`request/response` pattern, `response`s are destined to be received and processed in many
+**request/response** pattern, `response`s are destined to be received and processed in many
 real-world cases, and `response`, if expected, is to be received during the `after-posting stage`.
 
 As the other peer sees inbound traffic about the conversation, it establishes a
@@ -84,14 +104,14 @@ video casting, all the user's subscribers should be notified of the starting of 
 stream, and a streaming channel should be established to each ready subscriber, then the
 broadcaster should be notified how many subscribers will be watching.
 
-The _peer-scripting-code_ instructs about all those things as _WHAT_ to do, and the
-`hosting envirnoment` should expose enough artifacts implementing _HOW_ to do each of those.
+The _peer-scripting-code_ instructs about all those things as **WHAT** to do, and the
+`hosting envirnoment` should expose enough artifacts implementing **HOW** to do each of those.
 
-Theoretically every artifact exposed by the hosting environment is a `function`, which takes
+Theoretically every artifact exposed by the hosting environment is a **function**, which takes
 specific number/type of arguments, generates side-effects, and returns specific number/type
 of result (no return in case the number is zero).
 
-While with Object-Oriented programming paradigm, there arose more types of `function`s that
+While with Object-Oriented programming paradigm, there arose more types of **function** s that
 carrying special semantics:
 
 - `constructor` function:
@@ -110,7 +130,7 @@ carrying special semantics:
   Meaning it has an implicit argument referencing the `reactor object`, in addition to its
   formal arguments.
 
-The implementation of a `function` exposed by a `hosting environment`, normally (the exact
+The implementation of a **function** exposed by a `hosting environment`, normally (the exact
 case that `response` is expected) does leverage the `hosting conversation` to send another
 set of _peer-scripting-code_, optionally with binary data/stream (the `response`), back to
 the posting peer, for the subsequences be realized at the posting site.
@@ -123,7 +143,8 @@ Additionally, the implementation can schedule more activities to happen later, a
 activity can then start new `posting conversation`s to the _OP_, i.e. communication in the
 reverse direction.
 
-Orchestration forms when multiple service/consumer nodes keep communicating p2p.
+Orchestration forms when multiple service/consumer nodes keep communicating with many others
+through p2p connections.
 
 ### HBI over vanilla TCP
 
@@ -153,11 +174,11 @@ Concurrent conversations can work upon QUIC streams, coming sooner than later ..
 
 ### For Overall Throughput
 
-- Do _NO_ `recv` at best, be `landing` peer scripts instead,
-- Decided to do `recv`, _ONLY_ do with a hosting conversation,
-- Decided to `recv` with a posting conversation, _ONLY_ do during the `after-posting stage`.
+- Do _NO_ **RECV** at best, be `landing` peer scripts instead,
+- Decided to do **RECV**, _ONLY_ do with a hosting conversation,
+- Decided to **RECV** with a posting conversation, _ONLY_ do during the `after-posting stage`.
 
-  Note: But you are not technically prevented to `recv` during the `posting stage`, well
+  Note: But you are not technically prevented to **RECV** during the `posting stage`, well
   doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
   to overall throughput. And you might even be taking more chances to create
   [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
