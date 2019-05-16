@@ -41,10 +41,10 @@ Building new applications with **Hosting Based Interface** - HBI, the classic
 **request/response** pattern can go naturally & very efficiently without imposing the
 dreadful RTT (if done correctly, see Caveats).
 
-### No Wait At Best, Replace Receiving with Hosting
+### No Wait At Best, Hosting instead of Receiving
 
-Active receiving is to wait, while hosting is no wait.
-It is better to be **HOSTING** rather than be **RECEIVING**.
+Active receiving is to wait, while hosting is **NO** wait.
+It is best to be **hosting** rather than **receiving**.
 
 ## In Action
 
@@ -175,11 +175,11 @@ Concurrent conversations can work upon QUIC streams, coming later, if not sooner
 
 ### For Overall Throughput
 
-- Do **NO** **RECEIVING** at best, be **HOSTING** (i.e. **landing** peer scripts) instead,
-- Decided to do **RECEIVE**, **ONLY** do with a hosting conversation,
-- Decided to **RECEIVE** with a posting conversation, **ONLY** do during the `after-posting stage`.
+- Do **NO** **receiving** at best, be **hosting** (i.e. **landing** peer scripts) instead,
+- Decided to **receive**, **ONLY** do with a hosting conversation,
+- Decided to **receive** with a posting conversation, **ONLY** do during the `after-posting stage`.
 
-  Note: But you are not technically prevented to **RECEIVE** during the `posting stage`, well
+  Note: But you are not technically prevented to **receive** during the `posting stage`, well
   doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
   to overall throughput. And you might even be taking more chances to create
   [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
