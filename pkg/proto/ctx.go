@@ -4,9 +4,6 @@ import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/complyue/hbi/pkg/errors"
-	"github.com/golang/glog"
 )
 
 // CancellableContext defines an interface compatible with `context.Context`, and
@@ -92,8 +89,6 @@ func (ctx *cancellableContext) Cancel(err error) {
 		ctx.done = closedChan
 		// this signals current goroutines receiving from it
 		close(done)
-	} else {
-		glog.Warningf("%+v", errors.New("repeating cancallation of context"))
 	}
 	// admit just the first non-nil error if multiple cancellations have been requested
 	if ctx.err == nil {

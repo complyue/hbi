@@ -49,8 +49,16 @@ func (hbic *HBIC) NetIdent() string {
 }
 
 func (hbic *HBIC) Disconnect(errReason string, trySendPeerError bool) {
-	if !hbic.CancellableContext.Cancelled() {
-		// can close only once
+	if hbic.CancellableContext.Cancelled() {
+		// wire has been closed, send won't succeed
+		if trySendPeerError {
+			trySendPeerError = false
+			if len(errReason) > 0 {
+				glog.Warningf("Not sending peer error as wire has been closed: %s", errReason)
+			}
+		}
+	} else {
+		// can close wire only once
 		defer hbic.wire.Disconnect()
 	}
 
