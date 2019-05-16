@@ -225,8 +225,9 @@ func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
 	var (
 		beginAcked chan struct{}
 
-		roq chan interface{}
-		rdq chan []byte
+		roq  chan interface{}
+		rdq  chan []byte
+		rddq chan *byte
 	)
 
 	isHoCo := len(coSeq) > 0
@@ -246,13 +247,14 @@ func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
 		beginAcked = make(chan struct{})
 		roq = make(chan interface{})
 		rdq = make(chan []byte)
+		rddq = make(chan *byte)
 	}
 
 	hbic.coq = append(hbic.coq, coState{
 		// common fields
 		hbic: hbic, coSeq: coSeq, sendDone: make(chan struct{}),
 		// po co only fields
-		beginAcked: beginAcked, roq: roq, rdq: rdq,
+		beginAcked: beginAcked, roq: roq, rdq: rdq, rddq: rddq,
 	})
 	co = &hbic.coq[len(hbic.coq)-1] // do NOT use `ql` here, that's outdated if last co is a ho co
 
@@ -474,6 +476,9 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 			if err == io.EOF {
 				// wire disconnected by peer, break landing loop
 				err = nil // not considered an error
+			} else if hbic.CancellableContext.Cancelled() {
+				// active disconnection caused wire reading
+				err = nil // not considered an error
 			}
 			return
 		}
@@ -569,10 +574,34 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 			// nor a po co to recv the pushed data if coq empty
 			recvCo := hbic.coPeek("no po co to receive data")
 
-			// pushing data/stream to a po co
+			// pump bufs from a po co, receive the data/stream into each of them
+			var pd *byte
 			hbic.recvStream(func() ([]byte, error) {
-				if d, ok := <-recvCo.rdq; ok {
-					return d, nil
+				if pd != nil {
+					select {
+					case <-hbic.Done():
+						if err == nil {
+							err = errors.New("disconnected while receiving data")
+						}
+						return nil, err
+					case recvCo.rddq <- pd:
+						// normal case
+					}
+					pd = nil
+				}
+				select {
+				case <-hbic.Done():
+					if err == nil {
+						err = errors.New("disconnected while receiving data")
+					}
+					return nil, err
+				case d, ok := <-recvCo.rdq:
+					if ok {
+						if d != nil {
+							pd = &d[0]
+						}
+						return d, nil
+					}
 				}
 				return nil, nil
 			})

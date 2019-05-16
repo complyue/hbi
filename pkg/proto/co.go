@@ -42,6 +42,7 @@ type coState struct {
 	beginAcked chan struct{}
 	roq        chan interface{}
 	rdq        chan []byte
+	rddq       chan *byte
 }
 
 // PoCo is the active, posting conversation
@@ -121,6 +122,16 @@ func (co *PoCo) RecvData(d []byte) error {
 		// normal case
 	}
 
+	select {
+	case <-co.hbic.Done():
+		return errors.New("disconnected")
+	case pd := <-co.rddq:
+		// normal case
+		if pd != &d[0] {
+			panic("?!")
+		}
+	}
+
 	return nil
 }
 
@@ -140,15 +151,27 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 		if err != nil {
 			return err
 		}
+
 		select {
 		case <-co.hbic.Done():
 			return errors.New("disconnected")
 		case co.rdq <- d:
 			// normal case
 		}
+
 		if d == nil {
 			// all data received
 			break
+		}
+
+		select {
+		case <-co.hbic.Done():
+			return errors.New("disconnected")
+		case pd := <-co.rddq:
+			// normal case
+			if pd != &d[0] {
+				panic("?!")
+			}
 		}
 	}
 
