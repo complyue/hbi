@@ -149,7 +149,7 @@ func (wire *TCPWire) SendData(d []byte) (n int64, err error) {
 
 // SendStream pulls all `[]byte` from the specified func and sends them as binary stream to peer endpoint.
 // each `[]byte` will have its len() of data sent, regardless of its cap().
-func (wire *TCPWire) SendStream(ds func() []byte) (n int64, err error) {
+func (wire *TCPWire) SendStream(ds func() ([]byte, error)) (n int64, err error) {
 	if glog.V(3) {
 		defer func() {
 			glog.Infof("HBI wire %s sent binary data of %d bytes.",
@@ -363,7 +363,7 @@ func (wire *TCPWire) RecvData(d []byte) (n int64, err error) {
 
 // RecvStream receives binary data stream into all `[]byte` from the specified func.
 // each []byte will be filled up to its len(), regardless of its cap().
-func (wire *TCPWire) RecvStream(ds func() []byte) (n int64, err error) {
+func (wire *TCPWire) RecvStream(ds func() ([]byte, error)) (n int64, err error) {
 	if glog.V(3) {
 		defer func() {
 			glog.Infof("HBI wire %s received binary data of %d bytes.",

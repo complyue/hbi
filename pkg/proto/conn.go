@@ -115,7 +115,7 @@ func (hbic *HBIC) sendData(d []byte) (err error) {
 	return
 }
 
-func (hbic *HBIC) sendStream(ds func() []byte) (err error) {
+func (hbic *HBIC) sendStream(ds func() ([]byte, error)) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = errors.RichError(e)
@@ -143,7 +143,7 @@ func (hbic *HBIC) recvData(d []byte) (err error) {
 	return
 }
 
-func (hbic *HBIC) recvStream(ds func() []byte) (err error) {
+func (hbic *HBIC) recvStream(ds func() ([]byte, error)) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = errors.RichError(e)
@@ -562,11 +562,11 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 			recvCo := hbic.coPeek("no po co to receive data")
 
 			// pushing data/stream to a po co
-			hbic.recvStream(func() []byte {
+			hbic.recvStream(func() ([]byte, error) {
 				if d, ok := <-recvCo.rdq; ok {
-					return d
+					return d, nil
 				}
-				return nil
+				return nil, nil
 			})
 
 		case "co_ack_end":
