@@ -7,8 +7,8 @@ import (
 // Repr converts a value object to its string representation,
 // as much programming-language neutral as possible.
 //
-// This is currently implemented with `fmt.Sprintf("%#v", val)`, which produces Golang native
-// representation strings.
+// This is majorly implemented with `fmt.Sprintf("%#v", val)`, which produces Golang native
+// representation in string forms.
 //
 // Such representation can be customized by overriding a type's `Format(fmt.State, rune)` method,
 // like the example shows that desired result:
@@ -63,6 +63,15 @@ import (
 // Expand the `Example` section below to see full source.
 //
 func Repr(val interface{}) string {
-	// TODO handle quirks
+
+	if val == nil {
+		// Anko understands literal `nil` and handles typed/untyped nils properly.
+		//
+		// Any other language/runtime that intends to interop with Golang peers should map nil
+		// to a value of its native env, e.g. `None` for Python, `null` for JavaScript.
+		return "nil"
+	}
+	// TODO handle more quirks
+
 	return fmt.Sprintf("%#v", val)
 }
