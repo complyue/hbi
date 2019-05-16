@@ -140,15 +140,15 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 		if err != nil {
 			return err
 		}
-		if d == nil {
-			// all data received
-			break
-		}
 		select {
 		case <-co.hbic.Done():
 			return errors.New("disconnected")
 		case co.rdq <- d:
 			// normal case
+		}
+		if d == nil {
+			// all data received
+			break
 		}
 	}
 
