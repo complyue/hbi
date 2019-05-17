@@ -41,19 +41,35 @@ Building new applications with **Hosting Based Interface** - HBI, the classic
 **request/response** pattern can go naturally & very efficiently without imposing the
 dreadful RTT (if done correctly, see Caveats).
 
+## The Solution
+
 ### No Wait At Best, Hosting instead of Receiving
 
 Active receiving is to wait, while hosting is **NO** wait.
 It is best to be **hosting** rather than **receiving**.
 
-## In Action
+### In Action
 
 Checkout [HBI Chat](https://github.com/complyue/hbichat) and run it for fun.
 That project can be considered an
 [SSCCE](http://www.sscce.org/)
 HBI application.
 
-## Mechanism
+## What is HBI
+
+**HBI** is a _meta protocol_ for application systems (read **service** software components),
+possibly implemented in different programming languages and/or base runtimes,
+to establish communication channels between os processes (may or may not across computing
+nodes), as to communicate with _peer-scripting-code_ posted to eachother's
+**hosting environment**.
+
+By providing a **hosting environment** which exposes necessary artifacts (various
+**functions** in essense, see Mechanism) to accommodate the **landing** of the
+_peer-scripting-code_ from the other end, a service process defines both its
+[API](https://en.wikipeida.org/wiki/API) and the effect network protocol to access the API,
+at granted efficience.
+
+### Mechanism
 
 An `HBI` communication channel (wire) works Peer-to-Peer, each peer has 2 endpoints:
 the `posting endpoint` and the `hosting endpoint`. A peer is said to be acting actively
