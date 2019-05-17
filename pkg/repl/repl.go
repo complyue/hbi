@@ -115,7 +115,7 @@ func runOne(he *hbi.HostingEnv, code string) (result interface{}, err error) {
 	} else if text, ok := result.(string); ok {
 		fmt.Println(text)
 	} else {
-		fmt.Printf(" // %T\n := %s\n", result, hbi.Repr(result))
+		fmt.Printf(" // %T\n  = %s\n", result, hbi.Repr(result))
 	}
 
 	return
