@@ -2,6 +2,8 @@
 package hbi
 
 import (
+	"net"
+
 	"github.com/complyue/hbi/pkg/he"
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/complyue/hbi/pkg/sock"
@@ -29,7 +31,9 @@ type PostingEnd = proto.PostingEnd
 type Conver = proto.Conver
 
 // NewHostingEnv creates a new hosting environment
-var NewHostingEnv = he.NewHostingEnv
+func NewHostingEnv() *he.HostingEnv {
+	return he.NewHostingEnv()
+}
 
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
 // hosting env created from the `heFactory` function.
@@ -38,9 +42,13 @@ var NewHostingEnv = he.NewHostingEnv
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-var ServeTCP = sock.ServeTCP
+func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPListener)) (err error) {
+	return sock.ServeTCP(addr, heFactory, cb)
+}
 
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-var DialTCP = sock.DialTCP
+func DialTCP(addr string, he *he.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+	return sock.DialTCP(addr, he)
+}
