@@ -35,7 +35,7 @@ func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 		return out.String()
 	})
 	he.ExposeFunction("repr", func(v interface{}) string {
-		return fmt.Sprintf("%#v", v)
+		return hbi.Repr(v)
 	})
 	he.ExposeFunction("print", func(args ...interface{}) string {
 		fmt.Print(args...)
@@ -115,7 +115,7 @@ func runOne(he *hbi.HostingEnv, code string) (result interface{}, err error) {
 	} else if text, ok := result.(string); ok {
 		fmt.Println(text)
 	} else {
-		fmt.Printf(" // %T\n := %#v\n", result, result)
+		fmt.Printf(" // %T\n := %s\n", result, hbi.Repr(result))
 	}
 
 	return

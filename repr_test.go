@@ -57,12 +57,14 @@ func ExampleRepr() {
 	)
 	msg := NewMsg("Compl", "Hello, HBI world!", saidTime.Unix())
 
+	fmt.Printf("(%6s) %s\n", "Repr", Repr(msg))
 	fmt.Printf("(%6s) %#v\n", "Repr", msg)
 	fmt.Printf("(%6s) %+v\n", "Long", msg)
 	fmt.Printf("(%6s) %v\n", "Short", msg)
 	fmt.Printf("(%6s) %s\n", "String", msg)
 
 	// Output:
+	// (  Repr) Msg("Compl","Hello, HBI world!",1557998919)
 	// (  Repr) Msg("Compl","Hello, HBI world!",1557998919)
 	// (  Long) [May 16 17:28:39+08] @Compl: Hello, HBI world!
 	// ( Short) @Compl: Hello, HBI world!

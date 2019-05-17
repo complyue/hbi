@@ -2,17 +2,22 @@ package hbi
 
 import (
 	"fmt"
+	"strings"
 )
 
-// Repr converts a value object to its string representation,
-// as much programming-language neutral as possible.
+// Repr converts a value object to its textual representation, that can be used to
+// reconstruct the object by Anko (https://github.com/mattn/anko), or an HBI HostingEnv
+// implemented in other programming languages / runtimes.
 //
-// This is majorly implemented with `fmt.Sprintf("%#v", val)`, which produces Golang native
-// representation in string forms.
+// The syntax is very much JSON like, with `[]interface{}` maps to JSON array,
+// and `map[interface{}]interface{}` maps to JSON object.
+// But note it's not JSON compatible when a non-string key is present.
 //
-// Such representation can be customized by overriding a type's `Format(fmt.State, rune)` method,
-// like the example shows that desired result:
+// Despite those few special types, the representation of a value is majorly obtained via
+// `Sprintf("%#v", v)`, which can be customized by overriding `Format(fmt.State, rune)` method
+// of its type, like the example shows. For desired result:
 //
+//   fmt.Printf("(%6s) %s\n", "Repr", hbi.Repr(msg))
 //   fmt.Printf("(%6s) %#v\n", "Repr", msg)
 //   fmt.Printf("(%6s) %+v\n", "Long", msg)
 //   fmt.Printf("(%6s) %v\n", "Short", msg)
@@ -20,11 +25,12 @@ import (
 //
 //   // Output:
 //   // (  Repr) Msg("Compl","Hello, HBI world!",1557998919)
+//   // (  Repr) Msg("Compl","Hello, HBI world!",1557998919)
 //   // (  Long) [May 16 17:28:39+08] @Compl: Hello, HBI world!
 //   // ( Short) @Compl: Hello, HBI world!
 //   // (String) Msg<@Compl
 //
-// Can be customized from implementation:
+// Implement the `Format(fmt.State, rune)` method like this:
 //
 // 	 func (msg *Msg) Format(s fmt.State, verb rune) {
 // 	 	switch verb {
@@ -57,21 +63,62 @@ import (
 // See:
 // https://docs.python.org/3/library/functions.html#repr
 // and
-// https://docs.python.org/3/library/string.html#format-string-syntax
+// https://docs.python.org/3/reference/datamodel.html#object.__repr__
 // for a similar construct in Python.
 //
 // Expand the `Example` section below to see full source.
 //
 func Repr(val interface{}) string {
+	var r strings.Builder
+	if err := repr(val, &r); err != nil {
+		panic(err)
+	}
+	return r.String()
+}
 
+func repr(val interface{}, r *strings.Builder) error {
 	if val == nil {
 		// Anko understands literal `nil` and handles typed/untyped nils properly.
 		//
 		// Any other language/runtime that intends to interop with Golang peers should map nil
 		// to a value of its native env, e.g. `None` for Python, `null` for JavaScript.
-		return "nil"
+		r.WriteString("nil")
 	}
-	// TODO handle more quirks
 
-	return fmt.Sprintf("%#v", val)
+	switch v := val.(type) {
+	case []interface{}:
+		var first = true
+		r.WriteString("[")
+		for _, e := range v {
+			if first {
+				first = false
+			} else {
+				r.WriteString(", ")
+			}
+			r.WriteString(Repr(e))
+		}
+		r.WriteString("]")
+	case map[interface{}]interface{}:
+		var first = true
+		r.WriteString("{")
+		for k, vv := range v {
+			if first {
+				first = false
+			} else {
+				r.WriteString(", ")
+			}
+			if err := repr(k, r); err != nil {
+				return err
+			}
+			r.WriteString(": ")
+			if err := repr(vv, r); err != nil {
+				return err
+			}
+		}
+		r.WriteString("}")
+	default:
+		fmt.Fprintf(r, "%#v", val)
+	}
+
+	return nil
 }
