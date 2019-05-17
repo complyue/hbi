@@ -66,8 +66,10 @@ nodes), as to communicate with _peer-scripting-code_ posted to eachother's
 By providing a **hosting environment** which exposes necessary artifacts (various
 **functions** in essense, see Mechanism) to accommodate the **landing** of the
 _peer-scripting-code_ from the other end, a service process defines both its
-[API](https://en.wikipeida.org/wiki/API) and the effect network protocol to access the API,
-at granted efficience.
+[API](https://en.wikipedia.org/wiki/Application_programming_interface) and the effect
+network protocol to access the API, at granted efficience.
+
+Such network protocols are called **API defined protocol**s.
 
 ### Mechanism
 
