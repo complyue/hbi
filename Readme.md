@@ -37,11 +37,11 @@ are addressing various issues,
 especially including the above said one, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
 
+## The Solution
+
 Building new applications with **Hosting Based Interface** - HBI, the classic
 **request/response** pattern can go naturally & very efficiently without imposing the
 dreadful RTT (if done correctly, see Caveats).
-
-## The Solution
 
 ### No Wait At Best, Hosting instead of Receiving
 
