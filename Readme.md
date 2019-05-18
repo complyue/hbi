@@ -73,6 +73,166 @@ network protocol to access the API, at granted efficience.
 
 Such network protocols are called **API defined protocol**s.
 
+### Example - Download a File in a Room
+
+You should see:
+* There's no explicit network manipulations, just
+  * `co.send_obj()` / `co.recv_obj()`
+  * `co.send_data()` / `co.recv_data()` 
+* Control info (i.e. request, accept/refuse msg, file size etc.) is straight forward
+* No excessive memory used to hold full file data, the buffer size can be arbitrarily 
+  chosen at either side
+* The checksum of full file is calculated straight forward as well, no extra file scan
+
+And you should know:
+* All network traffic is pipelined with a single tcp connection underlying
+* The underlying tcp connection is shared with other service calls
+* No service call will pend the tcp connection to block other calls, when it's not sending sth
+* So the tcp connection is always at its max throughput possible (with RTT eliminated entirely)
+* No sophiscated network protocol design & optimisation needed to achieve all above
+
+Service API Implementation:
+```python
+    async def SendFile(self, room_id: str, fn: str):
+        co = self.ho.co
+
+        fpth = os.path.abspath(os.path.join("chat-server-files", room_id, fn))
+        if not os.path.exists(fpth) or not os.path.isfile(fpth):
+            # send negative file size, meaning download refused
+            await co.send_obj(repr([-1, f"no such file"]))
+            return
+
+        s = os.stat(fpth)
+
+        with open(fpth, "rb") as f:
+            # get file data size
+            f.seek(0, 2)
+            fsz = f.tell()
+
+            # send [file-size, msg] to peer, telling it the data size to receive and last
+            # modification time of the file.
+            msg = "last modified: " + datetime.fromtimestamp(s.st_mtime).strftime(
+                "%F %T"
+            )
+            await co.send_obj(repr([fsz, msg]))
+
+            # prepare to send file data from beginning, calculate checksum by the way
+            f.seek(0, 0)
+            chksum = 0
+
+            def stream_file_data():  # a generator function is ideal for binary data streaming
+                nonlocal chksum  # this is needed outer side, write to that var
+
+                # nothing prevents the file from growing as we're sending, we only send
+                # as much as glanced above, so count remaining bytes down,
+                # send one 1-KB-chunk at max at a time.
+                bytes_remain = fsz
+                while bytes_remain > 0:
+                    chunk = f.read(min(1024, bytes_remain))
+                    assert len(chunk) > 0, "file shrunk !?!"
+                    bytes_remain -= len(chunk)
+
+                    yield chunk  # yield it so as to be streamed to client
+                    chksum = crc32(chunk, chksum)  # update chksum
+
+                assert bytes_remain == 0, "?!"
+
+            # stream file data to consumer end
+            await co.send_data(stream_file_data())
+
+        # send chksum at last
+        await co.send_obj(repr(chksum))
+```
+
+Consumer Usage:
+```python
+    async def _download_file(self, fn):
+        lg = self.line_getter
+
+        room_dir = os.path.abspath(f"chat-client-files/{self.in_room}")
+        if not os.path.isdir(room_dir):
+            self.line_getter.show(f"Making room dir [{room_dir}] ...")
+            os.makedirs(room_dir, exist_ok=True)
+
+        async with self.po.co() as co:  # start a new posting conversation
+
+            # send out download request
+            await co.send_code(
+                rf"""
+SendFile({self.in_room!r}, {fn!r})
+"""
+            )
+
+        # receive response AFTER the posting conversation closed,
+        # this is crucial for overall throughput.
+        fsz, msg = await co.recv_obj()
+        if fsz < 0:
+            lg.show(f"Server refused file downlaod: {msg}")
+            return
+        elif msg is not None:
+            lg.show(f"@@ Server: {msg}")
+
+        fpth = os.path.join(room_dir, fn)
+
+        with open(fpth, "wb") as f:
+            total_kb = int(math.ceil(fsz / 1024))
+            lg.show(f" Start downloading {total_kb} KB data ...")
+
+            # prepare to recv file data from beginning, calculate checksum by the way
+            chksum = 0
+
+            def stream_file_data():  # a generator function is ideal for binary data streaming
+                nonlocal chksum  # this is needed outer side, write to that var
+
+                # receive 1 KB at most at a time
+                buf = bytearray(1024)
+
+                bytes_remain = fsz
+                while bytes_remain > 0:
+
+                    if len(buf) > bytes_remain:
+                        buf = buf[:bytes_remain]
+
+                    yield buf  # yield it so as to be streamed from client
+
+                    f.write(buf)  # write received data to file
+
+                    bytes_remain -= len(buf)
+
+                    chksum = crc32(buf, chksum)  # update chksum
+
+                    remain_kb = int(math.ceil(bytes_remain / 1024))
+                    lg.show(  # overwrite line above prompt
+                        f"\x1B[1A\r\x1B[0K {remain_kb:12d} of {total_kb:12d} KB remaining ..."
+                    )
+
+                assert bytes_remain == 0, "?!"
+
+                # overwrite line above prompt
+                lg.show(f"\x1B[1A\r\x1B[0K All {total_kb} KB received.")
+
+            # receive data stream from server
+            start_time = time.monotonic()
+            await co.recv_data(stream_file_data())
+
+        peer_chksum = await co.recv_obj()
+        elapsed_seconds = time.monotonic() - start_time
+
+        # overwrite line above
+        lg.show(
+            f"\x1B[1A\r\x1B[0K All {total_kb} KB downloaded in {elapsed_seconds:0.2f} second(s)."
+        )
+        # validate chksum calculated at peer side as it had all data sent
+        if peer_chksum != chksum:
+            lg.show(f"But checksum mismatch !?!")
+        else:
+            lg.show(
+                rf"""
+@@ downloaded {chksum:x} [{fn}]
+"""
+            )
+```
+
 ### Mechanism
 
 An `HBI` communication channel (wire) works Peer-to-Peer, each peer has 2 endpoints:
