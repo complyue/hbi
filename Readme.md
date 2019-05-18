@@ -59,8 +59,10 @@ HBI application.
 
 **HBI** is a _meta protocol_ for application systems (read **service** software components),
 possibly implemented in different programming languages and/or base runtimes,
-to establish communication channels between os processes (may or may not across computing
-nodes), as to communicate with _peer-scripting-code_ posted to eachother's
+to establish communication channels between
+[os process](https://en.wikipedia.org/wiki/Process_(computing))es
+(may or may not across computing nodes), as to communicate with _peer-scripting-code_ posted
+to eachother's
 **hosting environment**.
 
 By providing a **hosting environment** which exposes necessary artifacts (various
