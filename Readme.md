@@ -77,13 +77,13 @@ Such network protocols are called **API defined protocol**s.
 
 You should see:
 
-- There's no explicit network manipulations, just
+- There's no explicit network manipulations, just send/recv using the converstion object:
   - `co.send_obj()` / `co.recv_obj()`
   - `co.send_data()` / `co.recv_data()`
 - Control info (i.e. request, accept/refuse msg, file size etc.) is straight forward
-- No excessive memory used to hold full file data, the buffer size can be arbitrarily
-  chosen at either side
-- The checksum of full file is calculated straight forward as well, no extra file scan
+- Binary data streaming is straight forward too, i.e. no excessive memory used to hold full
+  file data, and the buffer size can be arbitrarily chosen at either side
+- The checksum of full data stream is calculated straight forward as well, no extra scan
 
 And you should know:
 
