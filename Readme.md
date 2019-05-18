@@ -60,7 +60,7 @@ HBI application.
 **HBI** is a _meta protocol_ for application systems (read **service** software components),
 possibly implemented in different programming languages and/or base runtimes,
 to establish communication channels between
-[os process](https://en.wikipedia.org/wiki/Process_(computing))es
+[os process](<https://en.wikipedia.org/wiki/Process_(computing)>)es
 (may or may not across computing nodes), as to communicate with _peer-scripting-code_ posted
 to eachother's
 **hosting environment**.
@@ -76,22 +76,25 @@ Such network protocols are called **API defined protocol**s.
 ### Example - Download a File in a Room
 
 You should see:
-* There's no explicit network manipulations, just
-  * `co.send_obj()` / `co.recv_obj()`
-  * `co.send_data()` / `co.recv_data()` 
-* Control info (i.e. request, accept/refuse msg, file size etc.) is straight forward
-* No excessive memory used to hold full file data, the buffer size can be arbitrarily 
+
+- There's no explicit network manipulations, just
+  - `co.send_obj()` / `co.recv_obj()`
+  - `co.send_data()` / `co.recv_data()`
+- Control info (i.e. request, accept/refuse msg, file size etc.) is straight forward
+- No excessive memory used to hold full file data, the buffer size can be arbitrarily
   chosen at either side
-* The checksum of full file is calculated straight forward as well, no extra file scan
+- The checksum of full file is calculated straight forward as well, no extra file scan
 
 And you should know:
-* All network traffic is pipelined with a single tcp connection underlying
-* The underlying tcp connection is shared with other service calls
-* No service call will pend the tcp connection to block other calls, when it's not sending sth
-* So the tcp connection is always at its max throughput possible (with RTT eliminated entirely)
-* No sophiscated network protocol design & optimisation needed to achieve all above
+
+- All network traffic is pipelined with a single tcp connection underlying
+- The underlying tcp connection is shared with other service calls
+- No service call will pend the tcp connection to block other calls, when it's not sending sth
+- So the tcp connection is always at its max throughput possible (with RTT eliminated entirely)
+- No sophiscated network protocol design & optimisation needed to achieve all above
 
 Service API Implementation:
+
 ```python
     async def SendFile(self, room_id: str, fn: str):
         co = self.ho.co
@@ -145,6 +148,7 @@ Service API Implementation:
 ```
 
 Consumer Usage:
+
 ```python
     async def _download_file(self, fn):
         lg = self.line_getter
