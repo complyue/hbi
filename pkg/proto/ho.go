@@ -1,21 +1,17 @@
 package proto
 
-import (
-	"github.com/complyue/hbi/pkg/he"
-)
-
 // HostingEnd is the application programming interface of an HBI hosting endpoint.
 type HostingEnd struct {
 	hbic *HBIC
 
-	env *he.HostingEnv
+	env *HostingEnv
 
 	localAddr string
 
 	co *HoCo
 }
 
-func (ho *HostingEnd) Env() *he.HostingEnv {
+func (ho *HostingEnd) Env() *HostingEnv {
 	return ho.env
 }
 

@@ -6,9 +6,9 @@ from typing import *
 
 from .._details import *
 from ..aio import *
-from ..he import *
 from ..log import *
 from .co import *
+from .he import *
 from .ho import *
 from .po import *
 
@@ -40,9 +40,11 @@ class HBIC:
         "_hott",
     )
 
-    def __init__(self, he: HostingEnv):
+    def __init__(self, he: "HostingEnv"):
         self.po = PostingEnd(self)
         self.ho = HostingEnd(self, he)
+        he._po = self.po
+        he._ho = self.ho
 
         # the wire underlying for data transportation
         self.wire = None

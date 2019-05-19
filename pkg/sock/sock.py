@@ -5,7 +5,6 @@ import traceback
 from typing import *
 
 from .._details import *
-from ..he import *
 from ..log import *
 from ..proto import *
 

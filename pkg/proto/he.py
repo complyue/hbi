@@ -2,6 +2,9 @@ import ast
 from typing import *
 from ..log import *
 
+from .po import PostingEnd
+from .ho import HostingEnd
+
 __all__ = ["HostingEnv", "run_py"]
 
 logger = get_logger(__name__)
@@ -19,12 +22,22 @@ class HostingEnv:
 
     """
 
-    __slots__ = ("_globals", "_locals", "_exposed_names")
+    __slots__ = ("_globals", "_locals", "_exposed_names", "_po", "_ho")
 
     def __init__(self, open_: bool = True):
         self._globals = {}
         self._locals = self._globals if open_ else None
         self._exposed_names = []
+        self._po = None
+        self._ho = None
+
+    @property
+    def po(self) -> "PostingEnd":
+        return self._po
+
+    @property
+    def ho(self) -> "HostingEnd":
+        return self._ho
 
     @property
     def globals(self) -> dict:

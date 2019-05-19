@@ -7,7 +7,6 @@ import (
 
 	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
-	"github.com/complyue/hbi/pkg/he"
 	"github.com/golang/glog"
 )
 
@@ -26,7 +25,7 @@ type HBIC struct {
 	// increamental record for non-repeating conversation ID sequence
 	nextCoSeq int
 	// conversation queue to serialize sending activities
-	coq []coState
+	coq []*coState
 
 	// to guard access to conversation related fields
 	muCo sync.Mutex
@@ -166,7 +165,16 @@ func (hbic *HBIC) recvStream(ds func() ([]byte, error)) (err error) {
 }
 
 func (hbic *HBIC) NewPoCo() (co *PoCo, err error) {
-	co = (*PoCo)(hbic.coEnqueue(""))
+	co = (*PoCo)(&coState{
+		hbic: hbic, sendDone: make(chan struct{}),
+
+		beginAcked: make(chan struct{}),
+		roq:        make(chan interface{}),
+		rdq:        make(chan []byte),
+		rddq:       make(chan *byte),
+	})
+
+	hbic.coEnqueue((*coState)(co))
 
 	err = hbic.sendPacket(co.CoSeq(), "co_begin")
 	return
@@ -180,7 +188,7 @@ func (hbic *HBIC) coEnd(co *coState, popOff bool) {
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != &hbic.coq[ql-1] {
+	if co != hbic.coq[ql-1] {
 		panic(errors.New("co mismatch coq tail"))
 	}
 
@@ -193,7 +201,7 @@ func (hbic *HBIC) coEnd(co *coState, popOff bool) {
 	}
 }
 
-func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
+func (hbic *HBIC) coEnqueue(co *coState) {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 
@@ -221,16 +229,7 @@ func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
 		}()
 	}
 
-	// these'll be kept nil for ho co, only assigned for po co
-	var (
-		beginAcked chan struct{}
-
-		roq  chan interface{}
-		rdq  chan []byte
-		rddq chan *byte
-	)
-
-	isHoCo := len(coSeq) > 0
+	isHoCo := len(co.coSeq) > 0
 	if isHoCo {
 		// creating a new ho co with coSeq received from peer
 		if hbic.ho.co != nil {
@@ -238,31 +237,19 @@ func (hbic *HBIC) coEnqueue(coSeq string) (co *coState) {
 		}
 	} else {
 		// creating a new po co, assign a new coSeq at this endpoint
-		coSeq = fmt.Sprintf("%d", hbic.nextCoSeq)
+		coSeq := fmt.Sprintf("%d", hbic.nextCoSeq)
 		hbic.nextCoSeq++
 		if hbic.nextCoSeq > details.MaxCoSeq {
 			hbic.nextCoSeq = details.MinCoSeq
 		}
-		// these are only used for a po co
-		beginAcked = make(chan struct{})
-		roq = make(chan interface{})
-		rdq = make(chan []byte)
-		rddq = make(chan *byte)
+		co.coSeq = coSeq
 	}
 
-	hbic.coq = append(hbic.coq, coState{
-		// common fields
-		hbic: hbic, coSeq: coSeq, sendDone: make(chan struct{}),
-		// po co only fields
-		beginAcked: beginAcked, roq: roq, rdq: rdq, rddq: rddq,
-	})
-	co = &hbic.coq[len(hbic.coq)-1] // do NOT use `ql` here, that's outdated if last co is a ho co
+	hbic.coq = append(hbic.coq, co) // do enqueue
 
 	if isHoCo { // assign here with muCo locked
 		hbic.ho.co = (*HoCo)(co)
 	}
-
-	return
 }
 
 func (hbic *HBIC) coAssertSender(co *coState) {
@@ -273,7 +260,7 @@ func (hbic *HBIC) coAssertSender(co *coState) {
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != &hbic.coq[ql-1] {
+	if co != hbic.coq[ql-1] {
 		panic(errors.New("co mismatch coq tail"))
 	}
 }
@@ -287,7 +274,7 @@ func (hbic *HBIC) coPeek(errIfNone string) (co *coState) {
 		panic(errIfNone)
 	}
 
-	co = &hbic.coq[0]
+	co = hbic.coq[0]
 	return
 }
 
@@ -299,7 +286,7 @@ func (hbic *HBIC) coAssertReceiver(co *coState) {
 	if ql < 1 {
 		panic(errors.New("coq empty"))
 	}
-	if co != &hbic.coq[0] {
+	if co != hbic.coq[0] {
 		panic(errors.New("co mismatch coq head"))
 	}
 }
@@ -313,13 +300,13 @@ func (hbic *HBIC) coDequeue() (co *coState) {
 		panic("coq empty")
 	}
 
-	co = &hbic.coq[0]
+	co = hbic.coq[0]
 	hbic.coq = hbic.coq[1:]
 	return
 }
 
 // NewConnection creates the posting & hosting endpoints from a transport wire with a hosting environment
-func NewConnection(wire HBIWire, env *he.HostingEnv) (*PostingEnd, *HostingEnd, error) {
+func NewConnection(wire HBIWire, env *HostingEnv) (*PostingEnd, *HostingEnd, error) {
 	hbic := &HBIC{
 		CancellableContext: NewCancellableContext(),
 
@@ -340,6 +327,7 @@ func NewConnection(wire HBIWire, env *he.HostingEnv) (*PostingEnd, *HostingEnd, 
 		localAddr: wire.LocalAddr(),
 	}
 	hbic.po, hbic.ho = po, ho
+	env.po, env.ho = po, ho
 
 	initDone := make(chan error)
 	// run the landing thread in a dedicated goroutine
@@ -487,7 +475,11 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 		switch pkt.WireDir {
 		case "co_begin":
 
-			hbic.coEnqueue(pkt.Payload) // ho.co is assigned inside with muCo locked
+			co := &coState{
+				hbic: hbic, sendDone: make(chan struct{}),
+				coSeq: pkt.Payload,
+			}
+			hbic.coEnqueue((*coState)(co)) // ho.co is assigned inside with muCo locked
 
 			if _, err = hbic.wire.SendPacket(pkt.Payload, "co_ack_begin"); err != nil {
 				trySendPeerError = false

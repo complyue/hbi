@@ -1,6 +1,6 @@
 import json
 
-from ..pkg.proto.ho import HostingEnv
+import hbi
 
 from collections import OrderedDict
 
@@ -44,7 +44,7 @@ class JSONStr(str):
         return self
 
 
-def expose_interop_values(he: HostingEnv):
+def expose_interop_values(he: "hbi.HostingEnv"):
     globals_ = he.globals
 
     exec(

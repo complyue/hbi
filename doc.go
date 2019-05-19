@@ -4,7 +4,6 @@ package hbi
 import (
 	"net"
 
-	"github.com/complyue/hbi/pkg/he"
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/complyue/hbi/pkg/sock"
 )
@@ -16,7 +15,7 @@ import (
 //   * reactor methods
 // These artifacts need to be explicitly exposed to a hosting environment,
 // to accomodate landing of peer scripting code.
-type HostingEnv = he.HostingEnv
+type HostingEnv = proto.HostingEnv
 
 // HostingEnd is the application programming interface of an HBI hosting endpoint.
 type HostingEnd = proto.HostingEnd
@@ -31,8 +30,8 @@ type PostingEnd = proto.PostingEnd
 type Conver = proto.Conver
 
 // NewHostingEnv creates a new hosting environment
-func NewHostingEnv() *he.HostingEnv {
-	return he.NewHostingEnv()
+func NewHostingEnv() *proto.HostingEnv {
+	return proto.NewHostingEnv()
 }
 
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
@@ -42,13 +41,13 @@ func NewHostingEnv() *he.HostingEnv {
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) (err error) {
 	return sock.ServeTCP(addr, heFactory, cb)
 }
 
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(addr string, he *he.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+func DialTCP(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
 	return sock.DialTCP(addr, he)
 }

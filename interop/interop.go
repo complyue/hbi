@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/complyue/hbi/pkg/he"
+	"github.com/complyue/hbi"
 )
 
 // ExposeInterOpValues exposes some common names in other languages for interop with them
-func ExposeInterOpValues(he *he.HostingEnv) {
+func ExposeInterOpValues(he *hbi.HostingEnv) {
 	ve := he.AnkoEnv()
 	ve.ExecuteContext(context.Background(), `
 None = nil

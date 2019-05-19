@@ -1,4 +1,4 @@
-package he
+package proto
 
 import (
 	"context"
@@ -17,6 +17,8 @@ import (
 // to accomodate landing of peer scripting code.
 type HostingEnv struct {
 	ve       *vm.Env
+	po       *PostingEnd
+	ho       *HostingEnd
 	exposure []string
 }
 
@@ -30,6 +32,14 @@ func NewHostingEnv() *HostingEnv {
 
 func (he *HostingEnv) AnkoEnv() *vm.Env {
 	return he.ve
+}
+
+func (he *HostingEnv) Po() *PostingEnd {
+	return he.po
+}
+
+func (he *HostingEnv) Ho() *HostingEnd {
+	return he.ho
 }
 
 func (he *HostingEnv) ExposedNames() []string {
@@ -197,4 +207,13 @@ func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 		}
 	}
 
+}
+
+// Reactor is the interface optionally implemented by a type whose instances are
+// to be exposed to a `HostingEnv` by calling `he.ExposeReactor()`.
+//
+// If a reactor object does not implement this interface, all its exported
+// fields and methods will be exposed.
+type Reactor interface {
+	NamesToExpose() []string
 }

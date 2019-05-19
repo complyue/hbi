@@ -8,7 +8,6 @@ import (
 
 	details "github.com/complyue/hbi/pkg/_details"
 	"github.com/complyue/hbi/pkg/errors"
-	"github.com/complyue/hbi/pkg/he"
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/golang/glog"
 )
@@ -20,7 +19,7 @@ import (
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) (err error) {
 	var raddr *net.TCPAddr
 	raddr, err = net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
@@ -59,7 +58,7 @@ func ServeTCP(addr string, heFactory func() *he.HostingEnv, cb func(*net.TCPList
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(addr string, he *he.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+func DialTCP(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
 	raddr, err := net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
