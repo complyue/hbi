@@ -333,19 +333,172 @@ through p2p connections.
 
 ### HBI over vanilla TCP
 
-Python 3.7+
+* Python 3.7+
 
+  * Client
 ```python
-# Coming sooner than later ...
+import asyncio, hbi
+
+
+async def say_hello_to(addr):
+
+    po, ho = await hbi.dial_socket(addr, hbi.HostingEnv())
+
+    async with po.co() as co:
+
+        await co.send_code(
+            f"""
+my_name = 'Nick'
+hello()
+"""
+        )
+
+    msg_back = await co.recv_obj()
+
+    print(msg_back)
+
+
+asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
+```
+  * Outut
+```shell
+Hello, HBI world!
+Hello, Nick from 127.0.0.1:48784!
+```
+  * Server
+```python
+import asyncio, hbi
+
+
+def he_factory() -> hbi.HostingEnv:
+    he = hbi.HostingEnv()
+
+    he.expose_function(
+        "__hbi_init__",  # callback on wire connected
+        lambda po, ho: po.notif(
+            f"""
+print("Hello, HBI world!")
+"""
+        ),
+    )
+
+    he.expose_function(
+        "hello",  # reacting function name
+        lambda: he.ho.co.send_obj(
+            repr(f"Hello, {he.get('my_name')} from {he.po.remote_addr}!")
+        ),
+    )
+
+    return he
+
+
+async def serve_hello():
+
+    server = await hbi.serve_socket(
+        {"host": "127.0.0.1", "port": 3232},  # listen address
+        he_factory,  # factory for hosting environment
+    )
+    print("hello server listening:", server.sockets[0].getsockname())
+    await server.wait_closed()
+
+
+try:
+    asyncio.run(serve_hello())
+except KeyboardInterrupt:
+    pass
 ```
 
-Go1
+* Go1
 
+  * Client
 ```go
-// Coming sooner than later ...
+package main
+
+import (
+	"fmt"
+
+	"github.com/complyue/hbi"
+)
+
+func main() {
+
+	he := hbi.NewHostingEnv()
+
+	he.ExposeFunction("print", fmt.Println)
+
+	po, ho, err := hbi.DialTCP("localhost:3232", he)
+	if err != nil {
+		panic(err)
+	}
+	defer ho.Close()
+
+	co, err := po.NewCo()
+	if err != nil {
+		panic(err)
+	}
+	func() {
+		defer co.Close()
+
+		if err = co.SendCode(`
+my_name = "Nick"
+hello()	
+`); err != nil {
+			panic(err)
+		}
+	}()
+
+	msgBack, err := co.RecvObj()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(msgBack)
+}
+```
+  * Output
+```shell
+Hello, HBI world!
+Hello, Nick from 127.0.0.1:48778!
+```
+  * Server
+```go
+package main
+
+import (
+	"fmt"
+	"net"
+
+	"github.com/complyue/hbi"
+)
+
+func main() {
+
+	hbi.ServeTCP("localhost:3232", func() *hbi.HostingEnv {
+		he := hbi.NewHostingEnv()
+
+		he.ExposeFunction("__hbi_init__", // callback on wire connected
+			func(po *hbi.PostingEnd, ho *hbi.HostingEnd) {
+				po.Notif(`
+print("Hello, HBI world!")
+`)
+			})
+
+		he.ExposeFunction("hello", func() {
+			if err := he.Ho().Co().SendObj(hbi.Repr(fmt.Sprintf(
+				`Hello, %s from %s!`,
+				he.Get("my_name"), he.Po().RemoteAddr(),
+			))); err != nil {
+				panic(err)
+			}
+		})
+		return he
+	}, func(listener *net.TCPListener) {
+		fmt.Println("hello server listening:", listener.Addr())
+	})
+
+}
 ```
 
-ES6
+* ES6
 
 ```js
 // Coming later, if not sooner ...
