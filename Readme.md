@@ -333,9 +333,10 @@ through p2p connections.
 
 ### HBI over vanilla TCP
 
-* Python 3.7+
+- Python 3.7+
 
-  * Client
+  - Client
+
 ```python
 import asyncio, hbi
 
@@ -360,12 +361,16 @@ hello()
 
 asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
 ```
-  * Outut
+
+- Outut
+
 ```shell
 Hello, HBI world!
 Hello, Nick from 127.0.0.1:48784!
 ```
-  * Server
+
+- Server
+
 ```python
 import asyncio, hbi
 
@@ -408,9 +413,10 @@ except KeyboardInterrupt:
     pass
 ```
 
-* Go1
+- Go1
 
-  * Client
+  - Client
+
 ```go
 package main
 
@@ -441,7 +447,7 @@ func main() {
 
 		if err = co.SendCode(`
 my_name = "Nick"
-hello()	
+hello()
 `); err != nil {
 			panic(err)
 		}
@@ -454,12 +460,16 @@ hello()
 	fmt.Println(msgBack)
 }
 ```
-  * Output
+
+- Output
+
 ```shell
 Hello, HBI world!
 Hello, Nick from 127.0.0.1:48778!
 ```
-  * Server
+
+- Server
+
 ```go
 package main
 
@@ -498,7 +508,7 @@ print("Hello, HBI world!")
 }
 ```
 
-* ES6
+- ES6
 
 ```js
 // Coming later, if not sooner ...
