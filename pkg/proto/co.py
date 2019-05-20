@@ -82,9 +82,9 @@ class PoCo(Conver):
         "_rdq",
     )
 
-    def __init__(self, hbic, co_seq):
+    def __init__(self, hbic):
         self._hbic = hbic
-        self._co_seq = co_seq
+        self._co_seq = None
 
         self._send_done_fut = asyncio.get_running_loop().create_future()
         self._begin_acked_fut = None

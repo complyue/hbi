@@ -67,31 +67,43 @@ class HBIC:
         self._hott = None
 
     async def new_po_co(self) -> PoCo:
-        next_co_seq = self._next_co_seq
-        co_seq = str(next_co_seq)
-        next_co_seq += 1
-        if next_co_seq > MAX_CO_SEQ:
-            self._next_co_seq = MIN_CO_SEQ
-        co = PoCo(self, co_seq)
+        co = PoCo(self)
 
-        coq = self._coq
-        while coq:
-            tail_co = coq[-1]
-            if tail_co.is_closed():
-                break
-            await tail_co.wait_closed()
+        await self._co_enqueue(co)
 
         co._begin_acked_fut = asyncio.get_running_loop().create_future()
-
-        coq.append(co)
-
         try:
-            await self._send_packet(co_seq, b"co_begin")
+            await self._send_packet(co._co_seq, b"co_begin")
         except Exception as exc:
             co._begin_acked_fut.set_exception(exc)
             raise
 
         return co
+
+    async def _co_enqueue(self, co):
+        coq = self._coq
+        if coq:
+            while True:
+                # wait tail co closed before the new co can be enqueued
+                prev_co = coq[-1]
+                await prev_co.wait_closed()
+                if not coq:
+                    # no co in queue now, okay for this co to be enqueued
+                    break
+                if prev_co is coq[-1]:  # or if prev_co is still the tail,
+                    # this coroutine is the winner to enqueue next co
+                    break
+
+                # or the new tail co is the winner, loop another iteration to wait it closed
+
+        if co._co_seq is None:  # enqueuing a po co, assign co_seq
+            next_co_seq = self._next_co_seq
+            co._co_seq = str(next_co_seq)
+            next_co_seq += 1
+            if next_co_seq > MAX_CO_SEQ:
+                self._next_co_seq = MIN_CO_SEQ
+
+        coq.append(co)
 
     def is_connected(self) -> bool:
         if self._disc_fut.done():
@@ -362,14 +374,10 @@ HBIC {self.net_ident} disconnecting due to error:
 
                 assert ho._co is None, "unclean co_begin ?!"
                 co_seq = payload
-                while coq:
-                    tail_co = coq[-1]
-                    if tail_co.is_closed():
-                        break
-                    await tail_co.wait_closed()
-
                 co = HoCo(self, co_seq)
-                coq.append(co)
+
+                await self._co_enqueue(co)
+
                 ho._co = co
                 await self._send_packet(co_seq, b"co_ack_begin")
 
