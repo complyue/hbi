@@ -209,10 +209,10 @@ HBIC {self.net_ident} disconnecting due to error:
             if err_reason is not None and try_send_peer_err:
                 if wire.is_connected():
                     try:
-                        await wire.send_packet(str(err_reason).encode("utf-8"), b"err")
+                        wire.send_packet(str(err_reason).encode("utf-8"), b"err")
                     except Exception:
                         logger.warning(
-                            "HBIC {self.net_ident} failed sending peer error",
+                            f"HBIC {self.net_ident} failed sending peer error",
                             exc_info=True,
                         )
                 else:
