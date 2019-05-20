@@ -13,7 +13,7 @@ import (
 )
 
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
-// hosting env created from the `heFactory` function.
+// hosting environment created from the `heFactory` function.
 //
 // `cb` will be called with the created `*net.TCPListener`, it's handful to specify port as 0,
 // and receive the actual port from the cb.
@@ -55,9 +55,13 @@ func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPL
 	}
 }
 
-// DialTCP connects to specified remote address (host:port), react with specified hosting env.
+// DialTCP connects to specified remote address (host:port), react with specified hosting environment.
 //
-// The returned `po` is used to send code & data to remote peer for hosted landing.
+// The returned posting endpoint is used to create posting conversations to send code & data to remote
+// site for active communication.
+//
+// The returned hosting endpoint is used to obtain the current hosting conversation triggered by a
+// posting conversation from remote site for passive communication.
 func DialTCP(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
 	raddr, err := net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
