@@ -207,26 +207,39 @@ func (hbic *HBIC) coEnqueue(co *coState) {
 
 	ql := len(hbic.coq)
 	if ql > 0 {
-		// wait tail co closed before a new co can be enqueued
-		prevCo := hbic.coq[ql-1]
+		for {
+			// wait tail co closed before the new co can be enqueued
+			prevCo := hbic.coq[ql-1]
+			func() {
+				// release muCo during waiting for prevCo to be closed,
+				// or `coEnd()` on prevCo will deadlock.
+				hbic.muCo.Unlock()
+				defer hbic.muCo.Lock()
 
-		func() {
-			// release muCo during waiting for prevCo to be closed,
-			// or `coEnd()` on prevCo will deadlock.
-			hbic.muCo.Unlock()
-			defer hbic.muCo.Lock()
-
-			select {
-			case <-hbic.Done():
-				err := hbic.Err()
-				if err == nil {
-					err = errors.New("hbic disconnected")
+				select {
+				case <-hbic.Done():
+					err := hbic.Err()
+					if err == nil {
+						err = errors.New("hbic disconnected")
+					}
+					panic(err)
+				case <-prevCo.sendDone:
+					// normal case
 				}
-				panic(err)
-			case <-prevCo.sendDone:
-				// normal case
+			}()
+
+			// locked muCo again
+			ql = len(hbic.coq)
+			if ql <= 0 { // no co in queue now, okay for this co to be enqueued
+				break
 			}
-		}()
+			if prevCo == hbic.coq[ql-1] { // or if prevCo is still the tail,
+				// this goroutine is the winner to enqueue next co
+				break
+			}
+
+			// or the new tail co is the winner, loop another iteration to wait it closed
+		}
 	}
 
 	isHoCo := len(co.coSeq) > 0
