@@ -8,13 +8,13 @@ import (
 	"github.com/complyue/hbi/pkg/errors"
 )
 
-// HostingEnv is the container of hbi artifacts, including:
+// HostingEnv is the container of HBI artifacts, including:
 //   * functions
 //   * object constructors (special functions taking n args, returning 1 object)
-//   * value objects
 //   * reactor methods
+//   * value objects
 // These artifacts need to be explicitly exposed to a hosting environment,
-// to accomodate landing of peer scripting code.
+// to accomodate landing of `peer-scripting-code` from the other end.
 type HostingEnv struct {
 	ve       *vm.Env
 	po       *PostingEnd
@@ -22,6 +22,7 @@ type HostingEnv struct {
 	exposure []string
 }
 
+// NewHostingEnv creates a new, empty hosting environment.
 func NewHostingEnv() *HostingEnv {
 	he := &HostingEnv{
 		ve:       vm.NewEnv(),
@@ -30,28 +31,35 @@ func NewHostingEnv() *HostingEnv {
 	return he
 }
 
+// AnkoEnv returns the underlying Anko (https://github.com/mattn/anko) env.
 func (he *HostingEnv) AnkoEnv() *vm.Env {
 	return he.ve
 }
 
+// Po reutrns the posting endpoint attached to this env.
 func (he *HostingEnv) Po() *PostingEnd {
 	return he.po
 }
 
+// Ho returns the hosting endpoint attached to this env.
 func (he *HostingEnv) Ho() *HostingEnd {
 	return he.ho
 }
 
+// ExposedNames returns a copy of the slice of names, ever exposed through the `Expose*()` calles,
+// up to the point it is called.
 func (he *HostingEnv) ExposedNames() []string {
 	return append([]string(nil), he.exposure...)
 }
 
-// this needs not to be thread safe, should only be called from a single hosting goroutine
+// RunInEnv executes `code` within this environment.
 func (he *HostingEnv) RunInEnv(code string, ctx context.Context) (result interface{}, err error) {
+	// this needs not to be thread safe, should only be called from a single hosting goroutine
 	result, err = he.ve.ExecuteContext(ctx, code)
 	return
 }
 
+// NameExposed tells whether the specified name is exported from this env, up to the point it is called.
 func (he *HostingEnv) NameExposed(name string) bool {
 	// list of exposed names should not be quite long, linear search is okay
 	for _, expName := range he.exposure {
@@ -68,6 +76,7 @@ func (he *HostingEnv) validateExposeName(name string) {
 	}
 }
 
+// ExposeFunction exposes an arbitrary function to this env.
 func (he *HostingEnv) ExposeFunction(name string, fun interface{}) {
 	if reflect.TypeOf(fun).Kind() != reflect.Func {
 		panic(errors.Errorf("not a function: %T = %#v", fun, fun))
@@ -106,14 +115,20 @@ func (he *HostingEnv) ExposeCtor(ctorFunc interface{}, typeAlias string) {
 	he.exposure = append(he.exposure, typeAlias)
 }
 
-func (he *HostingEnv) ExposeValue(name string, fun interface{}) {
+// ExposeValue exposes the specified `val` with `name`.
+func (he *HostingEnv) ExposeValue(name string, val interface{}) {
 	he.validateExposeName(name)
-	if err := he.ve.Define(name, fun); err != nil {
+	if err := he.ve.Define(name, val); err != nil {
 		panic(errors.RichError(err))
 	}
 	he.exposure = append(he.exposure, name)
 }
 
+// Get returns what ever value associated with `name` in this env, which can be an:
+//   * exposed artifact
+//   * intrinsic object
+//   * implanted artifact by peer script
+// or nil if the name does not bind to anything in this env.
 func (he *HostingEnv) Get(name string) interface{} {
 	if val, err := he.ve.Get(name); err != nil {
 		// undefined symbol, return nil instead of panic here
@@ -123,6 +138,9 @@ func (he *HostingEnv) Get(name string) interface{} {
 	}
 }
 
+// ExposeReactor exposes all methods declared (by the list returned from `NamesToExpose`)
+// from `reactor`. If `reactor` does not implements `Reactor`, all its exported methods are
+// exposed.
 func (he *HostingEnv) ExposeReactor(reactor interface{}) {
 	var expNameWhiteList map[string]struct{}
 	if reactorObj, ok := reactor.(Reactor); ok {

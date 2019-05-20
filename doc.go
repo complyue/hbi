@@ -1,4 +1,18 @@
 // Package hbi - Hosting Based Interface - Go1
+//
+// `HBI` is a `meta protocol` for application systems (read `service` software components),
+// possibly implemented in different programming languages and/or base runtimes,
+// to establish communication channels between os processes
+// (may or may not across computing nodes), as to communicate with `peer-scripting-code` posted
+// to eachother's `hosting environment`.
+//
+// By providing a `hosting environment` which exposes necessary artifacts (various
+// `functions` in essense, see Mechanism) (https://github.com/complyue/hbi#mechanism)
+// to accommodate the `landing` of the `peer-scripting-code` from the other end,
+// a service process defines both its API and the effect network protocol to access the API,
+// at granted efficience.
+//
+// Such network protocols are called `API defined protocol`s.
 package hbi
 
 import (
@@ -8,28 +22,31 @@ import (
 	"github.com/complyue/hbi/pkg/sock"
 )
 
-// HostingEnv is the container of hbi artifacts, including:
+// HostingEnv is the container of HBI artifacts, including:
 //   * functions
 //   * object constructors (special functions taking n args, returning 1 object)
-//   * value objects
 //   * reactor methods
+//   * value objects
 // These artifacts need to be explicitly exposed to a hosting environment,
-// to accomodate landing of peer scripting code.
+// to accomodate landing of `peer-scripting-code` from the other end.
 type HostingEnv = proto.HostingEnv
 
-// HostingEnd is the application programming interface of an HBI hosting endpoint.
+// HostingEnd is the application programming interface of a hosting endpoint.
 type HostingEnd = proto.HostingEnd
 
-// PostingEnd is the application programming interface of an HBI posting endpoint.
+// PostingEnd is the application programming interface of a posting endpoint.
 type PostingEnd = proto.PostingEnd
 
-// Conver is the conversation interface.
-//  there're basically 2 types of conversations:
-//   * the active, posting conversation
-//   * the passive, hosting conversation
+// Conver is the application programming interface of a conversation, common to PoCo and HoCo.
+//
+// There're 2 types of conversation:
+//  * the active, posting conversation
+//    which is created by application by calling PostingEnd.Po()
+//  * the passive, hosting conversation
+//    which is automatically available to application, and obtained by calling HostingEnv.Co()
 type Conver = proto.Conver
 
-// NewHostingEnv creates a new hosting environment
+// NewHostingEnv creates a new, empty hosting environment.
 func NewHostingEnv() *HostingEnv {
 	return proto.NewHostingEnv()
 }
