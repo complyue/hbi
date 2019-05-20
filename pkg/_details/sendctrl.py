@@ -47,7 +47,6 @@ class SendCtrl:
             await fut
         except asyncio.CancelledError:
             # remove earlier to conserve some RAM, or it'll be removed from the deque at next unleash
-            self._waiters.remove(fut)
             raise  # re-raise
 
     def obstruct(self):

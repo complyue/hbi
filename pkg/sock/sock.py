@@ -341,7 +341,7 @@ class SocketWire(asyncio.Protocol):
                     if not header_pl.startswith(b"["):
                         rpt_len = len(header_pl)
                         rpt_hdr = header_pl[: min(self._hdr_got, 30)]
-                        rpt_net = self.net_ident
+                        rpt_net = self.net_ident()
                         raise RuntimeError(
                             f"Invalid packet start in header: len: {rpt_len}, peer: {rpt_net}, head: [{rpt_hdr}]"
                         )
