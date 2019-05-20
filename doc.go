@@ -30,7 +30,7 @@ type PostingEnd = proto.PostingEnd
 type Conver = proto.Conver
 
 // NewHostingEnv creates a new hosting environment
-func NewHostingEnv() *proto.HostingEnv {
+func NewHostingEnv() *HostingEnv {
 	return proto.NewHostingEnv()
 }
 
@@ -41,13 +41,13 @@ func NewHostingEnv() *proto.HostingEnv {
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *HostingEnv, cb func(*net.TCPListener)) (err error) {
 	return sock.ServeTCP(addr, heFactory, cb)
 }
 
 // DialTCP connects to specified remote address (host:port), react with specified hosting env.
 //
 // The returned `po` is used to send code & data to remote peer for hosted landing.
-func DialTCP(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+func DialTCP(addr string, he *HostingEnv) (po *PostingEnd, ho *HostingEnd, err error) {
 	return sock.DialTCP(addr, he)
 }
