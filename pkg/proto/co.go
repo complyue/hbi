@@ -274,6 +274,9 @@ func (co *HoCo) CoSeq() string {
 //
 // Only side effects are expected from landing of `code` at peer site.
 func (co *HoCo) SendCode(code string) error {
+	if co != co.hbic.ho.co {
+		panic("send with ended ho co")
+	}
 	co.hbic.coAssertSender((*coState)(co))
 
 	return co.hbic.sendPacket(code, "")
@@ -284,6 +287,9 @@ func (co *HoCo) SendCode(code string) error {
 // The originating posting conversation at peer site is expected to receive the result value
 // from landing of `code`, by calling Po().RecvObj()
 func (co *HoCo) SendObj(code string) error {
+	if co != co.hbic.ho.co {
+		panic("send with ended ho co")
+	}
 	co.hbic.coAssertSender((*coState)(co))
 
 	return co.hbic.sendPacket(code, "co_recv")
@@ -294,6 +300,9 @@ func (co *HoCo) SendObj(code string) error {
 // The originating posting conversation at peer site is expected to receive the data by
 // calling Po().RecvData() or Po().RecvStream()
 func (co *HoCo) SendData(d []byte) error {
+	if co != co.hbic.ho.co {
+		panic("send with ended ho co")
+	}
 	co.hbic.coAssertSender((*coState)(co))
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
@@ -309,6 +318,9 @@ func (co *HoCo) SendData(d []byte) error {
 // The originating posting conversation at peer site is expected to receive the data by
 // calling Po().RecvData() or Po().RecvStream()
 func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
+	if co != co.hbic.ho.co {
+		panic("send with ended ho co")
+	}
 	co.hbic.coAssertSender((*coState)(co))
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
@@ -320,7 +332,9 @@ func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 // RecvObj of a hosting conversation receives the landing result of a piece of `code` sent
 // by its originating posting conversation via PoCo().SendObj(code)
 func (co *HoCo) RecvObj() (interface{}, error) {
-	co.hbic.coAssertReceiver((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("recv with ended ho co")
+	}
 
 	return co.hbic.recvOneObj()
 }
@@ -328,7 +342,9 @@ func (co *HoCo) RecvObj() (interface{}, error) {
 // RecvData of a hosting conversation receives the binary data sent by its originating
 // posting conversation via PoCo().SendData() or PoCo().SendStream()
 func (co *HoCo) RecvData(d []byte) error {
-	co.hbic.coAssertReceiver((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("recv with ended ho co")
+	}
 
 	return co.hbic.recvData(d)
 }
@@ -336,7 +352,9 @@ func (co *HoCo) RecvData(d []byte) error {
 // RecvStream of a hosting conversation receives the binary data sent by its originating
 // posting conversation via PoCo().SendData() or PoCo().SendStream()
 func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
-	co.hbic.coAssertReceiver((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("recv with ended ho co")
+	}
 
 	return co.hbic.recvStream(ds)
 }

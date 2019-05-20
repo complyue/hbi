@@ -205,6 +205,14 @@ func (hbic *HBIC) coEnqueue(co *coState) {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 
+	isHoCo := len(co.coSeq) > 0
+
+	if isHoCo { // check here with muCo locked
+		if hbic.ho.co != nil {
+			panic("unclean co_begin")
+		}
+	}
+
 	ql := len(hbic.coq)
 	if ql > 0 {
 		for {
@@ -218,11 +226,14 @@ func (hbic *HBIC) coEnqueue(co *coState) {
 
 				select {
 				case <-hbic.Done():
-					err := hbic.Err()
-					if err == nil {
-						err = errors.New("hbic disconnected")
+					// disconnected already
+					if !isHoCo { // report err to application if not called from hosting thread
+						err := hbic.Err()
+						if err == nil {
+							err = errors.New("hbic disconnected")
+						}
+						panic(err)
 					}
-					panic(err)
 				case <-prevCo.sendDone:
 					// normal case
 				}
@@ -242,13 +253,7 @@ func (hbic *HBIC) coEnqueue(co *coState) {
 		}
 	}
 
-	isHoCo := len(co.coSeq) > 0
-	if isHoCo {
-		// creating a new ho co with coSeq received from peer
-		if hbic.ho.co != nil {
-			panic("unclean co_begin")
-		}
-	} else {
+	if !isHoCo {
 		// creating a new po co, assign a new coSeq at this endpoint
 		coSeq := fmt.Sprintf("%d", hbic.nextCoSeq)
 		hbic.nextCoSeq++
@@ -381,6 +386,8 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 		if len(discReason) > 0 {
 			if err == nil {
 				err = errors.New(discReason)
+			} else {
+				glog.Errorf("Detail error for disconnection: %+v", err)
 			}
 		} else if err != nil {
 			discReason = fmt.Sprintf("landing error: %+v", err)
@@ -418,6 +425,8 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 			if len(discReason) > 0 {
 				if err == nil {
 					err = errors.New(discReason)
+				} else {
+					glog.Errorf("Detail error for disconnection: %+v", err)
 				}
 			} else if err != nil {
 				discReason = fmt.Sprintf("%+v", err)

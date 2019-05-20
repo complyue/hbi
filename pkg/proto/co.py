@@ -218,7 +218,7 @@ class HoCo(Conver):
     async def send_code(self, code: str):
         hbic = self._hbic
         if self is not hbic.ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+            raise asyncio.InvalidStateError("send with ended ho co")
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_packet(code)
@@ -226,7 +226,7 @@ class HoCo(Conver):
     async def send_obj(self, code: str):
         hbic = self._hbic
         if self is not hbic.ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+            raise asyncio.InvalidStateError("send with ended ho co")
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_packet(code, b"co_recv")
@@ -244,7 +244,7 @@ class HoCo(Conver):
     ):
         hbic = self._hbic
         if self is not hbic.ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+            raise asyncio.InvalidStateError("send with ended ho co")
         assert self is hbic._coq[-1], "co not current sender?!"
 
         await hbic._send_packet(self.co_seq, b"po_data")
@@ -253,7 +253,7 @@ class HoCo(Conver):
     async def recv_obj(self):
         hbic = self._hbic
         if self is not hbic.ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+            raise asyncio.InvalidStateError("recv with ended ho co")
 
         return await hbic._recv_one_obj()
 
@@ -268,6 +268,6 @@ class HoCo(Conver):
     ):
         hbic = self._hbic
         if self is not hbic.ho.co:
-            raise asyncio.InvalidStateError("Hosting conversation ended already!")
+            raise asyncio.InvalidStateError("recv with ended ho co")
 
         await hbic._recv_data(bufs)
