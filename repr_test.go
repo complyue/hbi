@@ -12,10 +12,10 @@ type Msg struct {
 	Time    time.Time
 }
 
-func NewMsg(from, content string, time_a int64) *Msg {
+func NewMsg(from, content string, unixTimestamp int64) *Msg {
 	return &Msg{
 		From: from, Content: content,
-		Time: time.Unix(time_a, 0),
+		Time: time.Unix(unixTimestamp, 0),
 	}
 }
 

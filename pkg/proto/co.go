@@ -112,16 +112,18 @@ func (co *PoCo) SendStream(ds func() ([]byte, error)) error {
 // conversation.
 func (co *PoCo) Close() error {
 	if co.hbic.Cancelled() {
-		return co.hbic.Err()
+		err := co.hbic.Err()
+		if err == nil {
+			err = errors.New("disconnected")
+		}
+		return err
 	}
 
 	if co.sendDone == nil {
 		panic(errors.New("PoCo already closed"))
 	}
 
-	co.hbic.endPoCo(co)
-
-	return co.hbic.sendPacket(co.coSeq, "co_end")
+	return co.hbic.endPoCo(co)
 }
 
 // IsClosed tells whether this posting conversation has been closed, i.e. in its `recv` phase

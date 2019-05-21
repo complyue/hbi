@@ -175,13 +175,11 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 		endAcked:   make(chan struct{}),
 	}
 
-	hbic.enqPoCo(co)
-
-	err = hbic.sendPacket(co.CoSeq(), "co_begin")
+	err = hbic.enqPoCo(co)
 	return
 }
 
-func (hbic *HBIC) endPoCo(co *PoCo) {
+func (hbic *HBIC) endPoCo(co *PoCo) error {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 
@@ -197,28 +195,14 @@ func (hbic *HBIC) endPoCo(co *PoCo) {
 		panic("both po/ho co open ?!")
 	}
 
-	close(co.sendDone)
-	co.sendDone = nil
-}
-
-func (hbic *HBIC) endHoCo(coSeq string) {
-	hbic.muCo.Lock()
-	defer hbic.muCo.Unlock()
-
-	co := hbic.ho.co
-
-	if co == nil {
-		panic("unclean co_end")
-	}
-
-	if co.coSeq != coSeq {
-		panic("ho co seq mismatch")
+	if err := hbic.sendPacket(co.coSeq, "co_end"); err != nil {
+		return err
 	}
 
 	close(co.sendDone)
 	co.sendDone = nil
 
-	hbic.ho.co = nil
+	return nil
 }
 
 func (hbic *HBIC) enqPoCo(co *PoCo) error {
@@ -273,6 +257,11 @@ func (hbic *HBIC) enqPoCo(co *PoCo) error {
 
 		// wait tail po co close before this po co can enqueue
 		prevCo := coq[ql-1]
+		poCoDone := prevCo.sendDone
+		if poCoDone == nil {
+			// tail co already closed, proceed to enqueue this po co
+			break
+		}
 		if err := func() error {
 			// release muCo during waiting for prevCo to close, or it's deadlock
 			hbic.muCo.Unlock()
@@ -286,7 +275,7 @@ func (hbic *HBIC) enqPoCo(co *PoCo) error {
 					err = errors.New("hbic disconnected")
 				}
 				return err
-			case <-prevCo.sendDone:
+			case <-poCoDone:
 				// normal case
 			}
 
@@ -312,6 +301,9 @@ func (hbic *HBIC) enqPoCo(co *PoCo) error {
 
 		if prevCo == coq[ql-1] { // or if prevCo is still the tail,
 			// this goroutine is the winner to enqueue next co
+			if prevCo.sendDone != nil {
+				panic("po co sendDone closed but not cleared ?!")
+			}
 			break
 		}
 
@@ -330,10 +322,10 @@ func (hbic *HBIC) enqPoCo(co *PoCo) error {
 
 	hbic.coq = append(hbic.coq, co) // do enqueue
 
-	return nil
+	return hbic.sendPacket(co.CoSeq(), "co_begin")
 }
 
-func (hbic *HBIC) enqHoCo(co *HoCo) {
+func (hbic *HBIC) enqHoCo(coSeq string) error {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 
@@ -364,9 +356,7 @@ func (hbic *HBIC) enqHoCo(co *HoCo) {
 
 				return nil
 			}(); err != nil {
-				// this should be called from hosting thread, any error should have hade it
-				// to termniate, no panic here.
-				return
+				return err
 			}
 
 			// locked muCo again
@@ -392,7 +382,43 @@ func (hbic *HBIC) enqHoCo(co *HoCo) {
 		// empty coq is very okay for this ho co to enqueue, the wire is idle in this case.
 	}
 
-	hbic.ho.co = co
+	if _, err := hbic.wire.SendPacket(coSeq, "co_ack_begin"); err != nil {
+		return err
+	}
+
+	hbic.ho.co = &HoCo{
+		hbic:     hbic,
+		coSeq:    coSeq,
+		sendDone: make(chan struct{}),
+	}
+
+	return nil
+}
+
+func (hbic *HBIC) endHoCo(coSeq string) error {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	co := hbic.ho.co
+
+	if co == nil {
+		panic("unexpected co_end")
+	}
+
+	if co.coSeq != coSeq {
+		panic("ho co seq mismatch")
+	}
+
+	if _, err := hbic.wire.SendPacket(coSeq, "co_ack_end"); err != nil {
+		return err
+	}
+
+	close(co.sendDone)
+	co.sendDone = nil
+
+	hbic.ho.co = nil
+
+	return nil
 }
 
 func (hbic *HBIC) peekPoCo(errIfNone string) (co *PoCo) {
@@ -419,6 +445,12 @@ func (hbic *HBIC) deqPoCo() (co *PoCo) {
 
 	co = hbic.coq[0]
 	hbic.coq = hbic.coq[1:]
+
+	close(co.roq)
+	close(co.rdq)
+	close(co.rddq)
+	close(co.endAcked)
+
 	return
 }
 
@@ -596,14 +628,7 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 		switch pkt.WireDir {
 		case "co_begin":
 
-			co := &HoCo{
-				hbic:     hbic,
-				coSeq:    pkt.Payload,
-				sendDone: make(chan struct{}),
-			}
-			hbic.enqHoCo(co) // ho.co is assigned inside with muCo locked
-
-			if _, err = hbic.wire.SendPacket(pkt.Payload, "co_ack_begin"); err != nil {
+			if err = hbic.enqHoCo(pkt.Payload); err != nil {
 				trySendPeerError = false
 				return
 			}
@@ -623,16 +648,32 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 			if result, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
 				return
 			}
-			if _, err = wire.SendPacket(fmt.Sprintf("%#v", result), "co_recv"); err != nil {
+			if _, err = wire.SendPacket(Repr(result), "co_recv"); err != nil {
 				trySendPeerError = false
 				return
 			}
+
+		case "co_end":
+
+			if err = hbic.endHoCo(pkt.Payload); err != nil {
+				trySendPeerError = false
+				return
+			}
+
+		case "co_ack_begin":
+
+			recvCo := hbic.peekPoCo("po co lost")
+			if recvCo.coSeq != pkt.Payload {
+				panic("mismatch co_seq")
+			}
+
+			close(recvCo.beginAcked)
 
 		case "co_recv":
 
 			// `ho.co` is always assigned from this landing thread, no sync necessary to read it
 			if ho.co != nil { // pushing obj to a ho co
-				discReason = "co_recv without priori receiving code in landing"
+				discReason = "co_recv without priori receiving code under landing"
 				return
 			}
 
@@ -646,24 +687,6 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 				return
 			}
 			recvCo.roq <- result
-
-		case "co_end":
-
-			hbic.endHoCo(pkt.Payload)
-
-			if _, err = hbic.wire.SendPacket(pkt.Payload, "co_ack_end"); err != nil {
-				trySendPeerError = false
-				return
-			}
-
-		case "co_ack_begin":
-
-			recvCo := hbic.peekPoCo("po co lost")
-			if recvCo.coSeq != pkt.Payload {
-				panic("mismatch co_seq")
-			}
-
-			close(recvCo.beginAcked)
 
 		case "po_data":
 
@@ -712,13 +735,8 @@ func (hbic *HBIC) landingThread(initDone chan<- error) {
 
 			recvCo := hbic.deqPoCo()
 			if recvCo.coSeq != pkt.Payload {
-				panic("mismatch co_seq")
+				panic("po co seq mismatch")
 			}
-
-			close(recvCo.roq)
-			close(recvCo.rdq)
-			close(recvCo.rddq)
-			close(recvCo.endAcked)
 
 		case "err":
 

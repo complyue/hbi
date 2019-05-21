@@ -1,4 +1,4 @@
-package hbi
+package proto
 
 import (
 	"fmt"
