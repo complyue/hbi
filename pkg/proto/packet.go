@@ -14,6 +14,7 @@ type Packet struct {
 	Payload string
 }
 
+// Format make Packet implement fmt.Formatter
 func (pkt Packet) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 's':

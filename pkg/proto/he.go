@@ -130,12 +130,11 @@ func (he *HostingEnv) ExposeValue(name string, val interface{}) {
 //   * implanted artifact by peer script
 // or nil if the name does not bind to anything in this env.
 func (he *HostingEnv) Get(name string) interface{} {
-	if val, err := he.ve.Get(name); err != nil {
+	if val, err := he.ve.Get(name); err == nil {
 		// undefined symbol, return nil instead of panic here
-		return nil
-	} else {
 		return val
 	}
+	return nil
 }
 
 // ExposeReactor exposes all methods declared (by the list returned from `NamesToExpose`)
