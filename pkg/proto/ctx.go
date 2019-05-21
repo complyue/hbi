@@ -95,3 +95,8 @@ func (ctx *cancellableContext) Cancel(err error) {
 		ctx.err = err
 	}
 }
+
+// ClosedChan returns a non-nil channnel guaranteed to have been closed.
+func ClosedChan() chan struct{} {
+	return closedChan
+}

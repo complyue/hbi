@@ -37,15 +37,6 @@ type HostingEnd = proto.HostingEnd
 // PostingEnd is the application programming interface of a posting endpoint.
 type PostingEnd = proto.PostingEnd
 
-// Conver is the application programming interface of a conversation, common to PoCo and HoCo.
-//
-// There're 2 types of conversation:
-//  * the active, posting conversation
-//    which is created by application by calling PostingEnd.Po()
-//  * the passive, hosting conversation
-//    which is automatically available to application, and obtained by calling HostingEnv.Co()
-type Conver = proto.Conver
-
 // NewHostingEnv creates a new, empty hosting environment.
 func NewHostingEnv() *HostingEnv {
 	return proto.NewHostingEnv()

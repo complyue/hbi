@@ -4,60 +4,27 @@ import (
 	"github.com/complyue/hbi/pkg/errors"
 )
 
-// Conver is the application programming interface of a conversation, common to PoCo and HoCo.
+// PoCo is the active, posting conversation.
 //
-// There're 2 types of conversation:
-//  * the active, posting conversation
-//    which is created by application by calling PostingEnd.Po()
-//  * the passive, hosting conversation
-//    which is automatically available to application, and obtained by calling HostingEnv.Co()
-type Conver interface {
-	// CoSeq returns the sequence number of this conversation.
-	//
-	// The sequence number of a posting conversation is assigned by the posting endpoint created it,
-	// the number value does not necessarily be unique within a long time period, but won't repeat
-	// among millons of conversations per sent over a wire in line.
-	//
-	// The sequence of a hosting conversation is always the same as the posting conversation's that
-	// triggered it.
-	CoSeq() string
-
-	SendCode(code string) error
-	SendObj(code string) error
-	SendData(d []byte) error
-	SendStream(ds func() ([]byte, error)) error
-
-	RecvObj() (obj interface{}, err error)
-	RecvData(d []byte) error
-	RecvStream(ds func() ([]byte, error)) error
-
-	// Closed returns a channel that is closed when all out sending works through this
-	// conversation has been done.
-	Closed() chan struct{}
-}
-
-// the data structure for both conversation types
-type coState struct {
-	// common fields of ho/po co
+// A PoCo is created from application by calling PostingEnd.NewCo()
+type PoCo struct {
 	hbic  *HBIC
 	coSeq string
 
-	// closed
 	sendDone chan struct{}
 
-	// po co only fields
 	beginAcked chan struct{}
 	roq        chan interface{}
 	rdq        chan []byte
 	rddq       chan *byte
+	endAcked   chan struct{}
 }
 
-// PoCo is the active, posting conversation.
-//
-// A PoCo is automatically available to application, and obtained by calling HostingEnv.Co()
-type PoCo coState
-
 // CoSeq returns the sequence number of this conversation.
+//
+// The sequence number of a posting conversation is assigned by the posting endpoint created
+// it, the value does not necessarily be unique within a long time period, but won't repeat
+// among millons of conversations per sent over a wire in line.
 func (co *PoCo) CoSeq() string {
 	return co.coSeq
 }
@@ -65,8 +32,16 @@ func (co *PoCo) CoSeq() string {
 // SendCode sends `code` to peer's hosting endpoint for landing by its hosting environment.
 //
 // Only side effects are expected from landing of `code` at peer site.
+//
+// It is prohibited to `send` after the posting conversation has been closed, i.e. can only
+// do within `send` phase.
+//
+// Note this is not thread safe, can only be called from the goroutine which created this
+// conversation.
 func (co *PoCo) SendCode(code string) error {
-	co.hbic.coAssertSender((*coState)(co))
+	if co.sendDone == nil {
+		panic(errors.New("PoCo already closed"))
+	}
 
 	return co.hbic.sendPacket(code, "")
 }
@@ -75,8 +50,16 @@ func (co *PoCo) SendCode(code string) error {
 //
 // The respective hosting conversation at peer site is expected to receive the result value
 // from landing of `code`, by calling Ho().RecvObj()
+//
+// It is prohibited to `send` after the posting conversation has been closed, i.e. can only
+// do within `send` phase.
+//
+// Note this is not thread safe, can only be called from the goroutine which created this
+// conversation.
 func (co *PoCo) SendObj(code string) error {
-	co.hbic.coAssertSender((*coState)(co))
+	if co.sendDone == nil {
+		panic(errors.New("PoCo already closed"))
+	}
 
 	return co.hbic.sendPacket(code, "co_recv")
 }
@@ -85,8 +68,16 @@ func (co *PoCo) SendObj(code string) error {
 //
 // The respective hosting conversation at peer site is expected to receive the data by
 // calling Ho().RecvData() or Ho().RecvStream()
+//
+// It is prohibited to `send` after the posting conversation has been closed, i.e. can only
+// do within `send` phase.
+//
+// Note this is not thread safe, can only be called from the goroutine which created this
+// conversation.
 func (co *PoCo) SendData(d []byte) error {
-	co.hbic.coAssertSender((*coState)(co))
+	if co.sendDone == nil {
+		panic(errors.New("PoCo already closed"))
+	}
 
 	return co.hbic.sendData(d)
 }
@@ -97,81 +88,137 @@ func (co *PoCo) SendData(d []byte) error {
 //
 // The respective hosting conversation at peer site is expected to receive the data by
 // calling Ho().RecvData() or Ho().RecvStream()
+//
+// It is prohibited to `send` after the posting conversation has been closed, i.e. can only
+// do within `send` phase.
+//
+// Note this is not thread safe, can only be called from the goroutine which created this
+// conversation.
 func (co *PoCo) SendStream(ds func() ([]byte, error)) error {
-	co.hbic.coAssertSender((*coState)(co))
+	if co.sendDone == nil {
+		panic(errors.New("PoCo already closed"))
+	}
 
 	return co.hbic.sendStream(ds)
 }
 
-// RecvObj of a posting conversation receives the landing result of a piece of `code` sent
-// by its respective hosting conversation via HoCo().SendObj(code)
+// Close closes this posting conversation to transit it from `send` phase to `recv` phase.
 //
-// You would at best not receive through a posting conversation, but if you do, ONLY call
-// this after the posting conversation's `Close()` has been called, i.e. the posting
-// conversation has entered into `after-posting stage`.
+// Once closed, no out sending can be performed with this conversation, as the underlying
+// wire is released for other posting conversation to start off, so as to keep ideal
+// efficiency of the HBI connection in pipeline.
 //
-// If this is called before the posting conversation is closed, i.e. still in its
-// `posting stage`, the underlying wire is pended to wait the RTT, thus HARM A LOT to overall
-// throughput.
-func (co *PoCo) RecvObj() (obj interface{}, err error) {
-	// wait co_ack_begin from peer
-	select {
-	case <-co.hbic.Done():
-		err = errors.New("disconnected")
-		return
-	case <-co.beginAcked:
-		// normal case
+// Note this is not thread safe, can only be called from the goroutine which created this
+// conversation.
+func (co *PoCo) Close() error {
+	if co.hbic.Cancelled() {
+		return co.hbic.Err()
 	}
-	// must be the receiving conversation now
-	co.hbic.coAssertReceiver((*coState)(co))
+
+	if co.sendDone == nil {
+		panic(errors.New("PoCo already closed"))
+	}
+
+	co.hbic.endPoCo(co)
+
+	return co.hbic.sendPacket(co.coSeq, "co_end")
+}
+
+// IsClosed tells whether this posting conversation has been closed, i.e. in its `recv` phase
+// instead of `send` phase.
+func (co *PoCo) IsClosed() bool {
+	co.hbic.muCo.Lock()
+	sendDone := co.sendDone
+	co.hbic.muCo.Unlock()
+
+	return sendDone == nil
+}
+
+// RecvDone returns the channel that get closed when this posting conversation has been
+// fully processed.
+//
+// Subsequent processes depending on the success of this conversation's completion can
+// receive from the returned channel to wait the signal of proceed, with the backing hbic's
+// Done() channel selected together.
+//
+// Closing of this channel before its backing hbic is closed can confirm the final success of
+// this conversation, as well its `recv` phase. i.e. all peer-scripting-code and data/stream
+// sent with this conversation has been landed by peer's hosting endpoint, with a triggered
+// hosting conversation, and all back-scripts (plus data/stream if any) as the response
+// from that hosting conversation has been landed by local hosting endpoint, and received
+// with this posting conversation (if any recv ops involved).
+func (co *PoCo) RecvDone() <-chan struct{} {
+	return co.endAcked
+}
+
+// RecvObj returns the landed result of a piece of back-script `code` sent with the triggered
+// hosting conversation at remote site via HoCo().SendObj(code)
+//
+// It is prohibited to `recv` before the posting conversation is closed, i.e. can only do
+// within the `recv` phase. As the landing of back-scripts from triggered hosting conversation
+// at remote site can be queue up behind other hosting conversations triggered by other remote
+// posting conversations, those hosting conversations can not start landing before this posting
+// conversation is closed, `recv` before this po co closed will deadlock in such cases.
+func (co *PoCo) RecvObj() (obj interface{}, err error) {
+	co.hbic.muCo.Lock()
+	sendDone := co.sendDone
+	co.hbic.muCo.Unlock()
+	if sendDone != nil {
+		panic(errors.New("PoCo still open, must close it before doing recv"))
+	}
 
 	// wait co_recv from peer, the payload will be landed and sent via roq
 	select {
 	case <-co.hbic.Done():
-		err = errors.New("disconnected")
+		err = co.hbic.Err()
+		if err == nil {
+			err = errors.New("disconnected")
+		}
 		return
 	case result, ok := <-co.roq:
 		if !ok {
-			err = errors.New("no obj sent from peer hosting conversation")
+			err = errors.New("no obj sent from triggered hosting conversation")
 			return
 		}
 		obj = result
 	}
-
 	return
 }
 
-// RecvData of a posting conversation receives the binary data sent by its respective
-// hosting conversation via HoCo().SendData() or HoCo().SendStream()
+// RecvData receives the binary data/stream sent with the triggered hosting conversation at
+// remote site via HoCo().SendData() or HoCo().SendStream()
 //
-// You would at best not receive through a posting conversation, but if you do, ONLY call
-// this after the posting conversation's `Close()` has been called, i.e. the posting
-// conversation has entered into `after-posting stage`.
-//
-// If this is called before the posting conversation is closed, i.e. still in its
-// `posting stage`, the underlying wire is pended to wait the RTT, thus HARM A LOT to overall
-// throughput.
+// It is prohibited to `recv` before the posting conversation is closed, i.e. can only do
+// within the `recv` phase. As the landing of back-scripts from triggered hosting conversation
+// at remote site can be queue up behind other hosting conversations triggered by other remote
+// posting conversations, those hosting conversations can not start landing before this posting
+// conversation is closed, `recv` before this po co closed will deadlock in such cases.
 func (co *PoCo) RecvData(d []byte) error {
-	// wait co_ack_begin from peer
-	select {
-	case <-co.hbic.Done():
-		return errors.New("disconnected")
-	case <-co.beginAcked:
-		// normal case
+	co.hbic.muCo.Lock()
+	sendDone := co.sendDone
+	co.hbic.muCo.Unlock()
+	if sendDone != nil {
+		panic(errors.New("PoCo still open, must close it before doing recv"))
 	}
-	// must be the receiving conversation now
-	co.hbic.coAssertReceiver((*coState)(co))
 
 	select {
 	case <-co.hbic.Done():
-		return errors.New("disconnected")
+		err := co.hbic.Err()
+		if err == nil {
+			err = errors.New("disconnected")
+		}
+		return err
 	case co.rdq <- d:
 		// normal case
 	}
 
 	select {
 	case <-co.hbic.Done():
-		return errors.New("disconnected")
+		err := co.hbic.Err()
+		if err == nil {
+			err = errors.New("disconnected")
+		}
+		return err
 	case pd := <-co.rddq:
 		// normal case
 		if pd != &d[0] {
@@ -182,26 +229,21 @@ func (co *PoCo) RecvData(d []byte) error {
 	return nil
 }
 
-// RecvStream of a posting conversation receives the binary data sent by its respective
-// hosting conversation via HoCo().SendData() or HoCo().SendStream()
+// RecvStream receives the binary data/stream sent with the triggered hosting conversation at
+// remote site via HoCo().SendData() or HoCo().SendStream()
 //
-// You would at best not receive through a posting conversation, but if you do, ONLY call
-// this after the posting conversation's `Close()` has been called, i.e. the posting
-// conversation has entered into `after-posting stage`.
-//
-// If this is called before the posting conversation is closed, i.e. still in its
-// `posting stage`, the underlying wire is pended to wait the RTT, thus HARM A LOT to overall
-// throughput.
+// It is prohibited to `recv` before the posting conversation is closed, i.e. can only do
+// within the `recv` phase. As the landing of back-scripts from triggered hosting conversation
+// at remote site can be queue up behind other hosting conversations triggered by other remote
+// posting conversations, those hosting conversations can not start landing before this posting
+// conversation is closed, `recv` before this po co closed will deadlock in such cases.
 func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
-	// wait co_ack_begin from peer
-	select {
-	case <-co.hbic.Done():
-		return errors.New("disconnected")
-	case <-co.beginAcked:
-		// normal case
+	co.hbic.muCo.Lock()
+	sendDone := co.sendDone
+	co.hbic.muCo.Unlock()
+	if sendDone != nil {
+		panic(errors.New("PoCo still open, must close it before doing recv"))
 	}
-	// must be the receiving conversation now
-	co.hbic.coAssertReceiver((*coState)(co))
 
 	for {
 		d, err := ds()
@@ -211,7 +253,11 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 
 		select {
 		case <-co.hbic.Done():
-			return errors.New("disconnected")
+			err := co.hbic.Err()
+			if err == nil {
+				err = errors.New("disconnected")
+			}
+			return err
 		case co.rdq <- d:
 			// normal case
 		}
@@ -223,7 +269,11 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 
 		select {
 		case <-co.hbic.Done():
-			return errors.New("disconnected")
+			err := co.hbic.Err()
+			if err == nil {
+				err = errors.New("disconnected")
+			}
+			return err
 		case pd := <-co.rddq:
 			// normal case
 			if pd != &d[0] {
@@ -235,75 +285,89 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 	return nil
 }
 
-// Close closes this posting conversation to transit it from `posting stage` to
-// `after-posting stage`, and no more out sending can happen with this conversation.
+// HoCo is the passive, hosting conversation.
 //
-// Once closed, the underlying wire is released for other posting conversation to start off,
-// to maintain the wire in pipelined efficiency.
-func (co *PoCo) Close() error {
-	if co.hbic.Cancelled() {
-		return co.hbic.Err()
-	}
+// A HoCo is triggered by a PoCo from peer's posting endpoint, it is automatically available to
+// application, obtained by calling HostingEnd.Co()
+type HoCo struct {
+	hbic  *HBIC
+	coSeq string
 
-	co.hbic.coAssertSender((*coState)(co))
-
-	if err := co.hbic.sendPacket(co.coSeq, "co_end"); err != nil {
-		return err
-	}
-
-	co.hbic.coEnd((*coState)(co), false)
-
-	return nil
+	sendDone chan struct{}
 }
-
-// Closed returns the channel that is closed when `Close()` of this posting conversation
-// is called.
-func (co *PoCo) Closed() chan struct{} {
-	return co.sendDone
-}
-
-// HoCo is the passive, hosting conversation
-type HoCo coState
 
 // CoSeq returns the sequence number of this conversation.
+//
+// The sequence of a hosting conversation is always the same as the peer's posting conversation
+// that triggered it.
 func (co *HoCo) CoSeq() string {
 	return co.coSeq
 }
 
-// SendCode sends `code` to peer's hosting endpoint for landing by its hosting environment.
+// SendCode sends `code` as back-script to peer's hosting endpoint for landing by its hosting
+// environment. Only side effects are expected from landing of `code` at peer site.
 //
-// Only side effects are expected from landing of `code` at peer site.
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) SendCode(code string) error {
-	if co != co.hbic.ho.co {
-		panic("send with ended ho co")
+	if co.sendDone == nil {
+		panic("ho co closed")
 	}
-	co.hbic.coAssertSender((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("open ho co not inplace ?!")
+	}
 
 	return co.hbic.sendPacket(code, "")
 }
 
-// SendObj sends `code` to peer's hosting endpoint for landing by its hosting environment.
+// SendObj sends `code` to peer's hosting endpoint for landing by its hosting environment, and
+// the landed value to be received by calling PoCo.RecvObj() with the remote posting conversation
+// which triggered this ho co.
 //
-// The originating posting conversation at peer site is expected to receive the result value
-// from landing of `code`, by calling Po().RecvObj()
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) SendObj(code string) error {
-	if co != co.hbic.ho.co {
-		panic("send with ended ho co")
+	if co.sendDone == nil {
+		panic("ho co closed")
 	}
-	co.hbic.coAssertSender((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("open ho co not inplace ?!")
+	}
 
 	return co.hbic.sendPacket(code, "co_recv")
 }
 
-// SendData sends a single chunk of binary data to peer site.
+// SendData sends a single chunk of binary data to peer site, to be received with the remote
+// posting conversation which triggered this ho co, by calling PoCo.RecvData() or
+// PoCo.RecvStream()
 //
-// The originating posting conversation at peer site is expected to receive the data by
-// calling Po().RecvData() or Po().RecvStream()
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) SendData(d []byte) error {
-	if co != co.hbic.ho.co {
-		panic("send with ended ho co")
+	if co.sendDone == nil {
+		panic("ho co closed")
 	}
-	co.hbic.coAssertSender((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("open ho co not inplace ?!")
+	}
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
 		return err
@@ -312,16 +376,28 @@ func (co *HoCo) SendData(d []byte) error {
 }
 
 // SendStream polls callback function `ds()` until it returns a nil []byte or non-nil error,
-// and send each chunk to peer site in line. `ds()` will be called another time after the
-// chunk returned from the previous call has been sent out.
+// and send each chunk to peer site in order to be received with the remote
+// posting conversation which triggered this ho co, by calling PoCo.RecvData() or
+// PoCo.RecvStream()
 //
-// The originating posting conversation at peer site is expected to receive the data by
-// calling Po().RecvData() or Po().RecvStream()
+// `ds()` will be called each time after the chunk returned from the previous call has been
+// sent out.
+//
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
-	if co != co.hbic.ho.co {
-		panic("send with ended ho co")
+	if co.sendDone == nil {
+		panic("ho co closed")
 	}
-	co.hbic.coAssertSender((*coState)(co))
+	if co != co.hbic.ho.co {
+		panic("open ho co not inplace ?!")
+	}
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
 		return err
@@ -329,41 +405,86 @@ func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 	return co.hbic.sendStream(ds)
 }
 
-// RecvObj of a hosting conversation receives the landing result of a piece of `code` sent
-// by its originating posting conversation via PoCo().SendObj(code)
+// RecvObj returns the landed result of a piece of peer-scripting-code sent by calling
+// PoCo.SendObj() with the remote posting conversation which triggered this ho co.
+//
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) RecvObj() (interface{}, error) {
+	if co.sendDone == nil {
+		panic("ho co closed")
+	}
 	if co != co.hbic.ho.co {
-		panic("recv with ended ho co")
+		panic("open ho co not inplace ?!")
 	}
 
 	return co.hbic.recvOneObj()
 }
 
-// RecvData of a hosting conversation receives the binary data sent by its originating
-// posting conversation via PoCo().SendData() or PoCo().SendStream()
+// RecvData receives the binary data/stream sent by calling PoCo.SendData() or PoCo.SendStream()
+// with the remote posting conversation which triggered this ho co.
+//
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) RecvData(d []byte) error {
+	if co.sendDone == nil {
+		panic("ho co closed")
+	}
 	if co != co.hbic.ho.co {
-		panic("recv with ended ho co")
+		panic("open ho co not inplace ?!")
 	}
 
 	return co.hbic.recvData(d)
 }
 
-// RecvStream of a hosting conversation receives the binary data sent by its originating
-// posting conversation via PoCo().SendData() or PoCo().SendStream()
+// RecvStream receives the binary data/stream sent by calling PoCo.SendData() or PoCo.SendStream()
+// with the remote posting conversation which triggered this ho co.
+//
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
 func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
+	if co.sendDone == nil {
+		panic("ho co closed")
+	}
 	if co != co.hbic.ho.co {
-		panic("recv with ended ho co")
+		panic("open ho co not inplace ?!")
 	}
 
 	return co.hbic.recvStream(ds)
 }
 
-// Closed of a hosting conversation returns the channel that is closed when all packets from
-// its originating posting conversation have been landed, and all binary data streams have
-// been received.
+// IsClosed tells whether this hosting conversation has been closed.
 //
-// This is technically marked by a packet with `co_end` wire directive received at the
-func (co *HoCo) Closed() chan struct{} {
-	return co.sendDone
+// Both `send` and `recv` are allowed with a hosting conversation as long as it is open, such
+// operations will panic after the conversation is closed.
+// A hosting conversation is implicitly closed after all peer-scripting-code (and data/stream
+// if any) from the remote posting conversation have been landed and received.
+//
+// Note this can only be called from the landing thread of the hosting endpoint, i.e. from
+// functions exposed to the hosting environment and called by the peer-scripting-code from the
+// remote posting conversation which triggered this ho co.
+func (co *HoCo) IsClosed() bool {
+	if co.sendDone != nil && co != co.hbic.ho.co {
+		panic("open ho co not inplace ?!")
+	}
+
+	return co.sendDone == nil
 }

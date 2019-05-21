@@ -17,16 +17,16 @@ func (po *PostingEnd) NetIdent() string {
 	return po.hbic.netIdent
 }
 
-// NewCo creates a new posting conversation.
+// NewCo starts a new posting conversation.
 func (po *PostingEnd) NewCo() (*PoCo, error) {
-	return po.hbic.NewPoCo()
+	return po.hbic.newPoCo()
 }
 
 // Notif is shorthand to (implicitly) create a posting conversation, which is closed
 // immediately after called its SendCode(code)
 func (po *PostingEnd) Notif(code string) (err error) {
 	var co *PoCo
-	if co, err = po.hbic.NewPoCo(); err != nil {
+	if co, err = po.hbic.newPoCo(); err != nil {
 		return
 	}
 	defer co.Close()
@@ -41,7 +41,7 @@ func (po *PostingEnd) Notif(code string) (err error) {
 // immediately after called its SendCode(code) and SendData(d)
 func (po *PostingEnd) NotifData(code string, d []byte) (err error) {
 	var co *PoCo
-	if co, err = po.hbic.NewPoCo(); err != nil {
+	if co, err = po.hbic.newPoCo(); err != nil {
 		return
 	}
 	defer co.Close()
