@@ -337,6 +337,11 @@ func (hbic *HBIC) enqHoCo(coSeq string) error {
 	if ql := len(coq); ql > 0 { // wait tail po co close before this ho co can enqueue
 		for {
 			prevCo := coq[ql-1]
+			poCoDone := prevCo.sendDone
+			if poCoDone == nil {
+				// tail co already closed, proceed to enqueue this ho co
+				break
+			}
 			if err := func() error {
 				// release muCo during waiting for prevCo to close, or it's deadlock
 				hbic.muCo.Unlock()
@@ -350,7 +355,7 @@ func (hbic *HBIC) enqHoCo(coSeq string) error {
 						err = errors.New("hbic disconnected")
 					}
 					return err
-				case <-prevCo.sendDone:
+				case <-poCoDone:
 					// normal case
 				}
 
@@ -372,6 +377,9 @@ func (hbic *HBIC) enqHoCo(coSeq string) error {
 			}
 			if prevCo == coq[ql-1] { // or if prevCo is still the tail,
 				// this goroutine is the winner to enqueue next co
+				if prevCo.sendDone != nil {
+					panic("po co sendDone closed but not cleared ?!")
+				}
 				break
 			}
 
