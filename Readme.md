@@ -57,6 +57,14 @@ HBI application.
 
 ## What is HBI
 
+### Throughput Oriented Communication Infrastructure
+
+By [Pipelining](<https://en.wikipedia.org/wiki/Pipeline_(computing)>) the underlying transport
+wire, though lantency of each single API call is not improved, the over system can process
+largely more calls in a given window of time, i.e. optimal efficiency at overall throughput.
+
+### API Defined Protocol
+
 **HBI** is a _meta protocol_ for application systems (read **service** software components),
 possibly implemented in different programming languages and/or base runtimes,
 to establish communication channels between
@@ -71,7 +79,7 @@ _peer-scripting-code_ from the other end, a service process defines both its
 [API](https://en.wikipedia.org/wiki/Application_programming_interface) and the effect
 network protocol to access the API, at granted efficience.
 
-Such network protocols are called **API defined protocol**s.
+Such network protocols are called **API Defined Protocol**s.
 
 ### Example - Download a File in a Room
 
@@ -248,25 +256,32 @@ At any time, either peer can initiate a `posting conversation` for active commun
 in response to that, a `hosting conversation` will be triggered at the other peer, for
 passive communication.
 
-A `posting conversation` has 2 stages, -- the `posting stage` and the `after-posting stage`.
-During the `posting stage`, _peer-scripting-code_, i.e. textual code meant to be `landed`
-by peer's `hosting environment` (more on this later), optionally with binary data/stream,
-are sent through the underlying transport/wire.
+Both posting and hosting conversations have 2 stages, the `send` and the `recv` stage,
+a posting conversation starts out in `send` stage, while a hosting conversation starts out
+in `recv` stage. The transition from initial stage to the other is controlled by application.
+And only corresponding type of operations are allowed in each type of stage, i.e.
 
-A `posting conversation` **SHOULD** be `closed` as earlier as possible once all its sending works
-are done, this actually releases the underlying transport/wire for other `posting conversation`s
-to start off. Upon `closed`, the `posting conversation` switches to its `after-posting stage`,
-there ideally be no activity at all to happen within the `after-posting stage`, which makes it
-a _FIRE-AND-FORGET_ conversation. But `posting stage` is only the `request` part of the
-**request/response** pattern, `response`s are destined to be received and processed in many
-real-world cases, and `response`, if expected, is to be received during the `after-posting stage`.
+- In `send` stage:
+  - send operations allowed
+  - recv operations prohibited
+- In `recv` stage:
+  - recv operations allowed
+  - send operations prohibited
+
+Mixing of the 2 types of operation during either type of conversation is
+[deaklock](https://en.wikipedia.org/wiki/Deadlock) prone, in the context that underlying
+transport wire is shared among many conversations for overall throughput.
+
+A `posting conversation` **SHOULD** transit to `recv` stage as soon as possible, the transition
+is needed to release the underlying transport wire for other conversations to start sending.
+
+A _FIRE-AND-FORGET_ posting conversation is closed without stage transition and any `recv`
+operation, while in other cases the application transit a posting conversation to `recv`
+stage, then perform `recv` operations with it to get the response in the form of a series of
+value objects and/or data/stream, then finally close it.
 
 As the other peer sees inbound traffic about the conversation, it establishes a
 `hosting-conversation` to accommodate the `landing` of _peer-scripting-code_ received.
-
-A `hosting conversation` has just 1 stage, naming is not necessary but just call it
-`hosting stage`. During the `hosting stage`, the hosting peer uses its `hosting environment`
-to `land` whatever textual code sent by the posting peer.
 
 `landing` is simply the execution of textual scripting code, with the chosen programming
 language / runtime, with the `hosting envrionment` as context. e.g.
