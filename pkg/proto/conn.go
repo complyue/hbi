@@ -24,9 +24,10 @@ type HBIC struct {
 
 	// increamental record for non-repeating conversation ID sequence
 	nextCoSeq int
-	// posting conversation queue to serialize sending activities
-	coq []*PoCo
-
+	// pending posting conversations
+	ppc map[string]*PoCo
+	// current sending/receiving conversation
+	sender, recver interface{}
 	// to guard access to conversation related fields
 	muCo sync.Mutex
 }
@@ -164,6 +165,17 @@ func (hbic *HBIC) recvStream(ds func() ([]byte, error)) (err error) {
 	return
 }
 
+func (hbic *HBIC) recvHoCo() *HoCo {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	if hoCo, ok := hbic.recver.(*HoCo); ok {
+		return hoCo
+	}
+
+	return nil
+}
+
 func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 	co = &PoCo{
 		hbic: hbic, sendDone: make(chan struct{}),
@@ -175,24 +187,72 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 		endAcked:   make(chan struct{}),
 	}
 
-	err = hbic.enqPoCo(co)
-	return
-}
-
-func (hbic *HBIC) endPoCo(co *PoCo) error {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 
-	ql := len(hbic.coq)
-	if ql < 1 {
-		panic(errors.New("coq empty"))
-	}
-	if co != hbic.coq[ql-1] {
-		panic(errors.New("co mismatch coq tail"))
+	// wait current sender done
+	var sendDone chan struct{}
+	sender := hbic.sender
+	for sender != nil {
+		switch co := sender.(type) {
+		case *PoCo:
+			sendDone = co.sendDone
+		case *HoCo:
+			sendDone = co.sendDone
+		default:
+			panic("unexpected sender type")
+		}
+		if err = func() error {
+			// release muCo during waiting for send done, or it's deadlock
+			hbic.muCo.Unlock()
+			defer hbic.muCo.Lock()
+
+			select {
+			case <-hbic.Done():
+				// disconnected already
+				err := hbic.Err()
+				if err == nil {
+					err = errors.New("hbic disconnected")
+				}
+				return err
+			case <-sendDone:
+				// normal case
+			}
+
+			return nil
+		}(); err != nil {
+			return
+		}
+
+		// locked muCo again, if current sender is cleared, this goroutine has won to set a new sender
+		sender = hbic.sender
 	}
 
-	if hbic.ho.co != nil {
-		panic("both po/ho co open ?!")
+	for { // find a co seq unique among current pending ones
+		coSeq := fmt.Sprintf("%d", hbic.nextCoSeq)
+		hbic.nextCoSeq++
+		if hbic.nextCoSeq > details.MaxCoSeq {
+			hbic.nextCoSeq = details.MinCoSeq
+		}
+		if _, ok := hbic.ppc[coSeq]; !ok {
+			co.coSeq = coSeq
+			hbic.ppc[coSeq] = co
+			break
+		}
+	}
+
+	hbic.sender = co
+
+	err = hbic.sendPacket(co.CoSeq(), "co_begin")
+	return
+}
+
+func (hbic *HBIC) poCoFinishSend(co *PoCo) error {
+	hbic.muCo.Lock()
+	defer hbic.muCo.Unlock()
+
+	if co != hbic.sender {
+		panic(errors.New("po co not sender"))
 	}
 
 	if err := hbic.sendPacket(co.coSeq, "co_end"); err != nil {
@@ -205,127 +265,7 @@ func (hbic *HBIC) endPoCo(co *PoCo) error {
 	return nil
 }
 
-func (hbic *HBIC) enqPoCo(co *PoCo) error {
-	hbic.muCo.Lock()
-	defer hbic.muCo.Unlock()
-
-	hoCo := hbic.ho.co
-	for {
-
-	waitHoCo:
-
-		// wait ho co close before the new po co can enqueue
-		for hoCo != nil { // wait open ho co close before this po co can enqueue
-			hoCoDone := hoCo.sendDone
-			if hoCoDone == nil {
-				panic("inplace ho co closed ?!")
-			}
-			if err := func() error {
-				// release muCo during waiting for hoCo to close, or it's deadlock
-				hbic.muCo.Unlock()
-				defer hbic.muCo.Lock()
-
-				select {
-				case <-hbic.Done():
-					// disconnected already
-					err := hbic.Err()
-					if err == nil {
-						err = errors.New("hbic disconnected")
-					}
-					return err
-				case <-hoCoDone:
-					// normal case
-				}
-
-				return nil
-			}(); err != nil {
-				return err
-			}
-
-			// locked muCo again, check new ho co inplace
-			hoCo = hbic.ho.co
-		}
-
-		coq := hbic.coq
-		ql := len(coq)
-		if ql <= 0 {
-			// empty coq is very okay for this po co to enqueue, the wire is idle in this case.
-			break
-		}
-
-	waitTailPoCo:
-
-		// wait tail po co close before this po co can enqueue
-		prevCo := coq[ql-1]
-		poCoDone := prevCo.sendDone
-		if poCoDone == nil {
-			// tail co already closed, proceed to enqueue this po co
-			break
-		}
-		if err := func() error {
-			// release muCo during waiting for prevCo to close, or it's deadlock
-			hbic.muCo.Unlock()
-			defer hbic.muCo.Lock()
-
-			select {
-			case <-hbic.Done():
-				// disconnected already
-				err := hbic.Err()
-				if err == nil {
-					err = errors.New("hbic disconnected")
-				}
-				return err
-			case <-poCoDone:
-				// normal case
-			}
-
-			return nil
-		}(); err != nil {
-			return err
-		}
-
-		// locked muCo again
-
-		hoCo = hbic.ho.co
-		if hoCo != nil {
-			// a ho co wins, loop another iteration to wait it close
-			goto waitHoCo
-		}
-
-		coq = hbic.coq
-		ql = len(coq)
-		if ql <= 0 {
-			// empty coq is very okay for this po co to enqueue, the wire is idle in this case.
-			break
-		}
-
-		if prevCo == coq[ql-1] { // or if prevCo is still the tail,
-			// this goroutine is the winner to enqueue next co
-			if prevCo.sendDone != nil {
-				panic("po co sendDone closed but not cleared ?!")
-			}
-			break
-		}
-
-		// or a new tail po co has been enqueued by another goro as the winner,
-		// loop another iteration to wait it close
-		goto waitTailPoCo
-	}
-
-	// assign a new coSeq until now, so the value is guaranteed increamental over the wire
-	coSeq := fmt.Sprintf("%d", hbic.nextCoSeq)
-	hbic.nextCoSeq++
-	if hbic.nextCoSeq > details.MaxCoSeq {
-		hbic.nextCoSeq = details.MinCoSeq
-	}
-	co.coSeq = coSeq
-
-	hbic.coq = append(hbic.coq, co) // do enqueue
-
-	return hbic.sendPacket(co.CoSeq(), "co_begin")
-}
-
-func (hbic *HBIC) enqHoCo(coSeq string) error {
+func (hbic *HBIC) hoCoFinishRecv(coSeq string) error {
 	hbic.muCo.Lock()
 	defer hbic.muCo.Unlock()
 

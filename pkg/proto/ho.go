@@ -7,8 +7,6 @@ type HostingEnd struct {
 	env *HostingEnv
 
 	localAddr string
-
-	co *HoCo
 }
 
 // Env returns the hosting environment that this hosting endpoint is attached to.
@@ -26,14 +24,9 @@ func (ho *HostingEnd) NetIdent() string {
 	return ho.hbic.netIdent
 }
 
-// Co of a hosting endpoint returns the current hosting conversation triggered by an
-// originating posting conversation from its peer site.
-func (ho *HostingEnd) Co() *HoCo {
-	// lock muCo in case it's called from some goroutines other than the landing thread
-	ho.hbic.muCo.Lock()
-	defer ho.hbic.muCo.Unlock()
-
-	return ho.co
+// HoCo returns the current hosting conversation in `recv` phase.
+func (ho *HostingEnd) HoCo() *HoCo {
+	return ho.hbic.recvHoCo()
 }
 
 // Disconnect disconnects the underlying wire of the HBI connection, optionally with
