@@ -82,9 +82,9 @@ type PoCo struct {
 	coSeq string
 
 	sendDone chan struct{}
-	recvDone chan struct{}
 
 	beginAcked chan struct{}
+	recvDone   chan struct{}
 	endAcked   chan struct{}
 }
 
@@ -182,7 +182,30 @@ func (co *PoCo) StartRecv() error {
 		panic(errors.New("po co not in send stage"))
 	}
 
-	return co.hbic.poCoFinishSend(co, false)
+	if err := co.hbic.poCoFinishSend(co, false); err != nil {
+		return err
+	}
+
+	hbic := co.hbic
+	// wait begin of ho co ack
+	select {
+	case <-hbic.Done():
+		err := hbic.Err()
+		if err == nil {
+			err = errors.New("hbic disconnected")
+		}
+	case <-co.beginAcked:
+		// normal case, be current recver now
+	}
+
+	hbic.recvMutex.Lock()
+	defer hbic.recvMutex.Unlock()
+
+	if co != hbic.recver {
+		panic(errors.New("po co not current recver ?!"))
+	}
+
+	return nil
 }
 
 // RecvObj returns the landed result of a piece of back-script `code` sent with the triggered
@@ -195,20 +218,12 @@ func (co *PoCo) RecvObj() (obj interface{}, err error) {
 		panic(errors.New("po co not in recv stage"))
 	}
 
-	select {
-	case <-co.hbic.Done():
-		err = co.hbic.Err()
-		if err == nil {
-			err = errors.New("hbic disconnected")
-		}
-	case <-co.beginAcked:
-		// normal case, be current recver now
-	}
-	if co != co.hbic.recver {
+	hbic := co.hbic
+	if co != hbic.recver {
 		panic(errors.New("po co not current recver ?!"))
 	}
 
-	return co.hbic.recvOneObj()
+	return hbic.recvOneObj()
 }
 
 // RecvData receives the binary data/stream sent with the triggered hosting conversation at
@@ -221,21 +236,12 @@ func (co *PoCo) RecvData(d []byte) error {
 		panic(errors.New("po co not in recv stage"))
 	}
 
-	select {
-	case <-co.hbic.Done():
-		err := co.hbic.Err()
-		if err == nil {
-			err = errors.New("hbic disconnected")
-		}
-		return err
-	case <-co.beginAcked:
-		// normal case, be current recver now
-	}
-	if co != co.hbic.recver {
+	hbic := co.hbic
+	if co != hbic.recver {
 		panic(errors.New("po co not current recver ?!"))
 	}
 
-	return co.hbic.recvData(d)
+	return hbic.recvData(d)
 }
 
 // RecvStream receives the binary data/stream sent with the triggered hosting conversation at
@@ -248,21 +254,12 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 		panic(errors.New("po co not in recv stage"))
 	}
 
-	select {
-	case <-co.hbic.Done():
-		err := co.hbic.Err()
-		if err == nil {
-			err = errors.New("hbic disconnected")
-		}
-		return err
-	case <-co.beginAcked:
-		// normal case, be current recver now
-	}
-	if co != co.hbic.recver {
+	hbic := co.hbic
+	if co != hbic.recver {
 		panic(errors.New("po co not current recver ?!"))
 	}
 
-	return co.hbic.recvStream(ds)
+	return hbic.recvStream(ds)
 }
 
 // Close closes this posting conversation, neither send nor recv operation can be performed
@@ -270,12 +267,11 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 //
 // Note this can only be called from the goroutine which created this conversation.
 func (co *PoCo) Close() error {
-	hbic := co.hbic
-
-	hbic.poCoFinishSend(co, true)
+	co.hbic.poCoFinishSend(co, true)
 
 	if co.recvDone != nil {
 		close(co.recvDone)
+		co.recvDone = nil
 	}
 
 	return nil

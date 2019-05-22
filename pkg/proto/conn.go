@@ -36,8 +36,6 @@ type HBIC struct {
 	recver interface{}
 	// to guard access to recver related fields
 	recvMutex sync.Mutex
-	// received by coKeeper on each new recver implanted, to wait it done receiving
-	recvDone chan interface{}
 }
 
 func (hbic *HBIC) Po() *PostingEnd {
@@ -498,8 +496,6 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 	hbic.recvMutex.Lock()
 	defer hbic.recvMutex.Unlock()
 
-	var recvCo interface{}
-
 	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
 
 		pkt, err = wire.RecvPacket()
@@ -520,40 +516,82 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 			// start a new hosting conversation to accommodate peer's posting conversation
 
-			recvCo := &HoCo{
+			recvDone := make(chan struct{})
+			hoCo := &HoCo{
 				hbic: hbic, coSeq: pkt.Payload,
+				recvDone: recvDone,
 				sendDone: make(chan struct{}),
 			}
 
-			hbic.muCo.Lock()
-			hbic.recver = recvCo
-			hbic.muCo.Unlock()
+			hbic.recver = hoCo
 
 			// start the hosting thread
-			go recvCo.hostingThread()
+			go hoCo.hostingThread()
+
+			func() {
+				// wait ho co done receiving with recvMutex unlocked
+				hbic.recvMutex.Unlock()
+				defer hbic.recvMutex.Lock()
+
+				select {
+				case <-hbic.Done():
+					err = hbic.Err()
+					if err == nil {
+						err = errors.New("hbic disconnected")
+					}
+					return
+				case <-recvDone:
+					// ho co done receiving
+				}
+			}()
+
+			// locked recvMutex again, clear recver
+			hbic.recver = nil
 
 		case "co_ack_begin":
 
 			// direct response on wire to the respective local posting conversation
 
-			recvCo, ok := hbic.ppc[pkt.Payload]
+			poCo, ok := hbic.ppc[pkt.Payload]
 			if !ok {
 				panic("lost po co to ack ?!")
 			}
 
-			delete(hbic.ppc, recvCo.coSeq)
+			delete(hbic.ppc, poCo.coSeq)
 
-			hbic.muCo.Lock()
-			hbic.recver = recvCo
-			hbic.muCo.Unlock()
+			hbic.recver = poCo
 
-			close(recvCo.beginAcked)
+			close(poCo.beginAcked)
+
+			recvDone := poCo.recvDone
+			if recvDone != nil {
+				// po co intends to recv
+				func() {
+					// wait po co done receiving with recvMutex unlocked
+					hbic.recvMutex.Unlock()
+					defer hbic.recvMutex.Lock()
+
+					select {
+					case <-hbic.Done():
+						err = hbic.Err()
+						if err == nil {
+							err = errors.New("hbic disconnected")
+						}
+						return
+					case <-recvDone:
+						// po co done receiving
+					}
+				}()
+			} else {
+				// po co does not intend to recv
+				hbic.recver = nil
+			}
 
 		case "co_ack_end":
 
 			// end of response to local po co
 
-			if recvCo == nil {
+			if hbic.recver == nil {
 				// co_ack_end without co_ack_begin
 
 				poCo, ok := hbic.ppc[pkt.Payload]
@@ -569,7 +607,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 				// co_ack_end after co_ack_begin
 
-				poCo, ok := recvCo.(*PoCo)
+				poCo, ok := hbic.recver.(*PoCo)
 				if !ok {
 					panic("?!")
 				}
@@ -577,14 +615,9 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 					panic("co seq mismatch on co_ack_end ?!")
 				}
 
-				hbic.muCo.Lock()
-				if hbic.recver != poCo {
-					panic("?!")
-				}
-				hbic.recver = nil
-				hbic.muCo.Unlock()
-
 				close(poCo.endAcked)
+
+				hbic.recver = nil
 
 			}
 
@@ -602,48 +635,6 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 			return
 
 		}
-
-		select {
-		case <-hbic.Done():
-			// disconnected
-			return
-		case co, ok := <-hbic.recvDone:
-			if !ok {
-				panic("recvDone closed ?!")
-			}
-			if co != recvCo {
-				panic("wrong recver done ?!")
-			}
-		}
-
-		// recver (ho co or po co) done
-		func() {
-			hbic.muCo.Lock()
-			defer hbic.muCo.Unlock()
-
-			if hbic.recver != recvCo {
-				panic("?!")
-			}
-
-			switch co := recvCo.(type) {
-			case *HoCo:
-
-				// ho co done receiving
-
-				hbic.recver = nil
-
-			case *PoCo:
-
-				// po co done receiving
-
-				if co.sendDone != nil {
-					panic("?!")
-				}
-
-				// proceed to expect co_ack_end in this loop
-
-			}
-		}()
 	}
 }
 

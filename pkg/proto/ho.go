@@ -62,6 +62,7 @@ type HoCo struct {
 	hbic  *HBIC
 	coSeq string
 
+	recvDone chan struct{}
 	sendDone chan struct{}
 }
 
@@ -126,10 +127,41 @@ func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
 
 // StartSend transits this hosting conversation from `recv` stage to `send` stage.
 //
-// A hosting conversation starts out in `recv` stage, within which sendXXX() operations can not
+// A hosting conversation starts out in `recv` stage, within which SendXXX() operations can not
 // be performed with it; until its StartSend() is called to transit it to `send` stage, after
-// then sendXXX() operations are allowed but recvXXX() operations can no longer be performed.
+// then SendXXX() operations are allowed but RecvXXX() operations can no longer be performed.
 func (co *HoCo) StartSend() error {
+	if co.recvDone == nil {
+		return errors.New("ho co not in recv stage")
+	}
+
+	hbic := co.hbic
+
+	pkt, err := hbic.wire.RecvPacket()
+	if err != nil {
+		if err == io.EOF {
+			// wire disconnected by peer
+			err = nil    // not considered an error
+			hbic.Close() // disconnect normally
+		} else if hbic.CancellableContext.Cancelled() {
+			// active disconnection caused wire reading
+			err = nil // not considered an error
+		}
+		return err
+	}
+
+	if pkt.WireDir != "co_end" {
+		return errors.Errorf("More packet not received by ho co before starting send: %+v", pkt)
+	}
+	if pkt.Payload != co.coSeq {
+		return errors.New("co seq mismatch on co_end")
+	}
+
+	// signal coKeeper to start receiving next co
+	close(co.recvDone)
+	co.recvDone = nil
+	hbic.recvMutex.Unlock()
+
 	if err := co.hbic.hoCoStartSend(co); err != nil {
 		return err
 	}
@@ -143,11 +175,14 @@ func (co *HoCo) StartSend() error {
 // from functions exposed to the hosting environment and called by the peer-scripting-code from
 // the remote posting conversation which triggered this ho co.
 func (co *HoCo) SendCode(code string) error {
+	if co.recvDone != nil {
+		panic(errors.New("ho co not in send stage"))
+	}
 	if co.sendDone == nil {
 		panic(errors.New("ho co closed"))
 	}
 	if co != co.hbic.sender {
-		panic(errors.New("ho co not in send stage"))
+		panic(errors.New("ho co not current sender"))
 	}
 
 	return co.hbic.sendPacket(code, "")
@@ -161,11 +196,14 @@ func (co *HoCo) SendCode(code string) error {
 // from functions exposed to the hosting environment and called by the peer-scripting-code from
 // the remote posting conversation which triggered this ho co.
 func (co *HoCo) SendObj(code string) error {
+	if co.recvDone != nil {
+		panic(errors.New("ho co not in send stage"))
+	}
 	if co.sendDone == nil {
 		panic(errors.New("ho co closed"))
 	}
 	if co != co.hbic.sender {
-		panic(errors.New("ho co not in send stage"))
+		panic(errors.New("ho co not current sender"))
 	}
 
 	return co.hbic.sendPacket(code, "co_recv")
@@ -179,11 +217,14 @@ func (co *HoCo) SendObj(code string) error {
 // from functions exposed to the hosting environment and called by the peer-scripting-code from
 // the remote posting conversation which triggered this ho co.
 func (co *HoCo) SendData(d []byte) error {
+	if co.recvDone != nil {
+		panic(errors.New("ho co not in send stage"))
+	}
 	if co.sendDone == nil {
 		panic(errors.New("ho co closed"))
 	}
 	if co != co.hbic.sender {
-		panic(errors.New("ho co not in send stage"))
+		panic(errors.New("ho co not current sender"))
 	}
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
@@ -204,11 +245,14 @@ func (co *HoCo) SendData(d []byte) error {
 // from functions exposed to the hosting environment and called by the peer-scripting-code from
 // the remote posting conversation which triggered this ho co.
 func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
+	if co.recvDone != nil {
+		panic(errors.New("ho co not in send stage"))
+	}
 	if co.sendDone == nil {
 		panic(errors.New("ho co closed"))
 	}
 	if co != co.hbic.sender {
-		panic(errors.New("ho co not in send stage"))
+		panic(errors.New("ho co not current sender"))
 	}
 
 	if err := co.hbic.sendPacket(co.coSeq, "po_data"); err != nil {
@@ -223,11 +267,9 @@ func (co *HoCo) hostingThread() {
 		hbic = co.hbic
 
 		err error
-		ok  bool
 
-		wire   = hbic.wire
-		po, ho = hbic.po, hbic.ho
-		env    = ho.env
+		wire = hbic.wire
+		env  = hbic.ho.env
 
 		pkt *Packet
 
@@ -236,14 +278,8 @@ func (co *HoCo) hostingThread() {
 	)
 
 	if co != hbic.recver {
-		panic("ho co not set as current recver ?!")
+		panic(errors.New("ho co not start out as current recver ?!"))
 	}
-
-	defer func() {
-		// notify coKeeper that this ho co has done anyway upon exiting of this goro,
-		// after possible disconnection
-		hbic.recvDone <- co
-	}()
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -281,6 +317,9 @@ func (co *HoCo) hostingThread() {
 		co.sendDone = nil
 
 	}()
+
+	// lock recvMutex during receiving
+	hbic.recvMutex.Lock()
 
 	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
 
@@ -327,6 +366,15 @@ func (co *HoCo) hostingThread() {
 			if pkt.Payload != co.coSeq {
 				discReason = "co seq mismatch on co_end"
 			}
+
+			if co.recvDone == nil {
+				panic("StartSend() called ")
+			}
+
+			// signal coKeeper to start receiving next co
+			close(co.recvDone)
+			co.recvDone = nil
+			hbic.recvMutex.Unlock()
 
 			return
 
