@@ -151,7 +151,7 @@ func (co *HoCo) StartSend() error {
 	}
 
 	if pkt.WireDir != "co_end" {
-		return errors.Errorf("More packet not received by ho co before starting send: %+v", pkt)
+		return errors.Errorf("Extra packet not landed by ho co before transit to send stage: %+v", pkt)
 	}
 	if pkt.Payload != co.coSeq {
 		return errors.New("co seq mismatch on co_end")
@@ -317,7 +317,7 @@ func (co *HoCo) hostingThread() {
 		}
 	}()
 
-	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
+	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 && co.recvDone != nil {
 
 		pkt, err = wire.RecvPacket()
 		if err != nil {

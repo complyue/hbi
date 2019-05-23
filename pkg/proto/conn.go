@@ -201,9 +201,6 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 			case <-hbic.Done():
 				// disconnected already
 				err := hbic.Err()
-				if err == nil {
-					err = errors.New("hbic disconnected")
-				}
 				return err
 			case <-sendDone:
 				// normal case
@@ -537,9 +534,6 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 				select {
 				case <-hbic.Done():
 					err = hbic.Err()
-					if err == nil {
-						err = errors.New("hbic disconnected")
-					}
 					return
 				case <-recvDone:
 					// ho co done receiving
@@ -575,9 +569,6 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 					select {
 					case <-hbic.Done():
 						err = hbic.Err()
-						if err == nil {
-							err = errors.New("hbic disconnected")
-						}
 						return
 					case <-recvDone:
 						// po co done receiving
@@ -673,6 +664,11 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 	for {
 		if err != nil || len(discReason) > 0 {
 			panic("?!")
+		}
+
+		if hbic.Cancelled() {
+			err = hbic.Err()
+			return
 		}
 
 		pkt, err = wire.RecvPacket()

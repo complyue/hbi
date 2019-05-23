@@ -431,5 +431,10 @@ func (wire *TCPWire) RecvStream(ds func() ([]byte, error)) (n int64, err error) 
 }
 
 func (wire *TCPWire) Disconnect() {
+
+	// to avoid "connection reset by peer" error at remote site
+	wire.conn.CloseWrite()
+	wire.conn.CloseRead()
+
 	wire.conn.Close()
 }

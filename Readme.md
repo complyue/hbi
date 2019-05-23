@@ -73,8 +73,8 @@ That project can be considered an [SSCCE](http://www.sscce.org/) HBI application
 ### Throughput Oriented Communication Infrastructure
 
 By [Pipelining](<https://en.wikipedia.org/wiki/Pipeline_(computing)>) the underlying transport
-wire, though lantency of each single API call is not improved, the over system can process
-largely more calls in a given window of time, i.e. optimal efficiency at overall throughput.
+wire, though lantency of each single API call is not improved, but overall, the system can process
+largely more communications in a given window of time, i.e. optimal efficiency at throughput.
 
 And **HBI** specifically supports responses returned in different orders than their respective
 requests were sent, so as to break [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
@@ -96,7 +96,7 @@ By providing a **hosting environment** which exposes necessary artifacts (variou
 **functions** in essense, see Mechanism) to accommodate the **landing** of the
 _peer-scripting-code_ from the other end, a service process defines both its
 [API](https://en.wikipedia.org/wiki/Application_programming_interface) and the effect
-network protocol to access the API, at granted efficience.
+network protocol to access the API, at granted efficiency.
 
 Such network protocols are called **API Defined Protocol**s.
 

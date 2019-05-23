@@ -25,7 +25,7 @@ func (po *PostingEnd) NewCo() (*PoCo, error) {
 }
 
 // Notif is shorthand to (implicitly) create a posting conversation, which is closed
-// immediately after called its SendCode(code)
+// immediately after calling its SendCode(code)
 func (po *PostingEnd) Notif(code string) (err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
@@ -40,7 +40,7 @@ func (po *PostingEnd) Notif(code string) (err error) {
 }
 
 // NotifData is shorthand to (implicitly) create a posting conversation, which is closed
-// immediately after called its SendCode(code) and SendData(d)
+// immediately after calling its SendCode(code) and SendData(d)
 func (po *PostingEnd) NotifData(code string, d []byte) (err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
