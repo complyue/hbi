@@ -267,7 +267,9 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 //
 // Note this can only be called from the goroutine which created this conversation.
 func (co *PoCo) Close() error {
-	co.hbic.poCoFinishSend(co, true)
+	if co.sendDone != nil {
+		co.hbic.poCoFinishSend(co, true)
+	}
 
 	if co.recvDone != nil {
 		close(co.recvDone)

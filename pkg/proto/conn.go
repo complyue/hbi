@@ -348,6 +348,7 @@ func NewConnection(wire HBIWire, env *HostingEnv) (*PostingEnd, *HostingEnd, err
 		netIdent: wire.NetIdent(),
 
 		nextCoSeq: details.MinCoSeq,
+		ppc:       make(map[string]*PoCo),
 	}
 	po := &PostingEnd{
 		hbic: hbic,

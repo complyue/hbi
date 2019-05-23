@@ -32,8 +32,8 @@ func (ho *HostingEnd) NetIdent() string {
 	return ho.hbic.netIdent
 }
 
-// HoCo returns the current hosting conversation in `recv` stage.
-func (ho *HostingEnd) HoCo() *HoCo {
+// Co returns the current hosting conversation in `recv` stage.
+func (ho *HostingEnd) Co() *HoCo {
 	return ho.hbic.recverHoCo()
 }
 
@@ -160,7 +160,6 @@ func (co *HoCo) StartSend() error {
 	// signal coKeeper to start receiving next co
 	close(co.recvDone)
 	co.recvDone = nil
-	hbic.recvMutex.Unlock()
 
 	if err := co.hbic.hoCoStartSend(co); err != nil {
 		return err
@@ -308,18 +307,15 @@ func (co *HoCo) hostingThread() {
 
 	defer func() {
 		// notify peer the completion of hosting of its po co
+		if !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
+			if _, err = wire.SendPacket(co.coSeq, "co_ack_end"); err != nil {
+				return
+			}
 
-		if _, err = wire.SendPacket(co.coSeq, "co_ack_end"); err != nil {
-			return
+			close(co.sendDone)
+			co.sendDone = nil
 		}
-
-		close(co.sendDone)
-		co.sendDone = nil
-
 	}()
-
-	// lock recvMutex during receiving
-	hbic.recvMutex.Lock()
 
 	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
 
@@ -374,7 +370,6 @@ func (co *HoCo) hostingThread() {
 			// signal coKeeper to start receiving next co
 			close(co.recvDone)
 			co.recvDone = nil
-			hbic.recvMutex.Unlock()
 
 			return
 
