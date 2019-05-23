@@ -54,8 +54,8 @@ func (he *HostingEnv) ExposedNames() []string {
 
 // RunInEnv executes `code` within this environment.
 func (he *HostingEnv) RunInEnv(ctx context.Context, code string) (result interface{}, err error) {
-	// this needs not to be thread safe, should only be called from a single hosting goroutine
-	result, err = he.ve.ExecuteContext(ctx, code)
+	// this needs not to be thread safe, sync has been done against hbic.recver
+	result, err = he.ve.ExecuteContextUnsafe(ctx, code, false)
 	return
 }
 
