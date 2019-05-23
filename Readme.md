@@ -79,7 +79,7 @@ largely more calls in a given window of time, i.e. optimal efficiency at overall
 And **HBI** specifically supports responses returned in different orders than their respective
 requests were sent, so as to break [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
 Without relief from HOL blocking, solutions like
-[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining) is not on a par. See
+[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining) is not on a par, see
 [HTTP Pipelining: A security risk without real performance benefits](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
 
 ### API Defined Protocol
@@ -109,6 +109,9 @@ What should be available to the back-script, and what will be triggered at the c
 site in response to each posting conversation it sends, is at the API authors' discretion.
 While the reacting behavior at the consuming site as it's back-scripted, is at the consumer's
 discretion.
+
+And the service site can schedule posting conversations to be started against any connected
+consumer endpoint, at appropriate time, to push system events in realtime.
 
 ### Example - Download a File in a Room
 
