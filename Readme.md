@@ -27,9 +27,9 @@ peer endpoint, as in-bound transportation through the underlying transport, befo
 the next request is let-go to start off.
 
 The result is that transports (tcp connections for HTTP), wasted too much time in
-RTT (round-trip time). That's why **MANY** (yet **SMALL**) js/css files must be packed into
-**FEW** (yet **LARGE**) ones for decent page loading time, while the total traffic amount is
-almost the same.
+[Round-trip Delay Time](https://en.wikipedia.org/wiki/Round-trip_delay_time).
+That's why **MANY** (yet **SMALL**) js/css files must be packed into **FEW** (yet **LARGE**)
+ones for decent page loading time, while the total traffic amount is almost the same.
 
 [HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining)
 has helped benchmarks to reach
@@ -39,14 +39,17 @@ but that's [not helping for realworld cases](https://devcentral.f5.com/s/article
 Newer protocols like `HTTP/2` and [QUIC](https://en.wikipedia.org/wiki/QUIC)
 (a.k.a [HTTP/3](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/))
 are addressing various issues,
-especially including the above said one, but suffering from legacy burden for backward
+especially including the above said ones, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
 
 ## The Solution
 
 Building new applications with **Hosting Based Interface** - HBI, the classic
 **request/response** pattern can go naturally & very efficiently without imposing the
-dreadful RTT (if done correctly, see Caveats).
+dreadful
+[RTT](https://en.wikipedia.org/wiki/Round-trip_delay_time)
+and
+[HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
 
 ### No Wait At Best, Hosting instead of Receiving
 
@@ -55,10 +58,15 @@ It is best to be **hosting** rather than **receiving**.
 
 ### In Action
 
-Checkout [HBI Chat](https://github.com/complyue/hbichat) and run it for fun.
-That project can be considered an
-[SSCCE](http://www.sscce.org/)
-HBI application.
+Checkout [HBI Chat](https://github.com/complyue/hbichat), start a server, start a client,
+then spam the server with many bots and many file uploads/downloads for fun.
+
+But better run it on a RamDisk, i.e. cd to `/dev/shm` on systems providing it like Linux, or
+[create one on macOS](https://apple.stackexchange.com/questions/298836/create-an-apfs-ram-disk).
+Spinning disks will bottleneck your stress, and you don't want to sacrifice your SSD's
+lifespan just to upload/download random data files.
+
+That project can be considered an [SSCCE](http://www.sscce.org/) HBI application.
 
 ## What is HBI
 
@@ -553,16 +561,3 @@ print("Hello, HBI world!")
 ### HBI over [QUIC](https://en.wikipedia.org/wiki/QUIC)
 
 Concurrent conversations can work upon QUIC streams, coming later, if not sooner ...
-
-## Caveats
-
-### For Overall Throughput
-
-- Do **NO** **receiving** at best, be **hosting** (i.e. **landing** peer scripts) instead,
-- Decided to **receive**, **ONLY** do with a hosting conversation,
-- Decided to **receive** with a posting conversation, **ONLY** do during the `after-posting stage`.
-
-  Note: But you are not technically prevented to **receive** during the `posting stage`, well
-  doing so will pend the underlying wire, stop pipelining of dataflow, thus _HARM A LOT_
-  to overall throughput. And you might even be taking more chances to create
-  [Deaklock](https://en.wikipedia.org/wiki/Deadlock)s
