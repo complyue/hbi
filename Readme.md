@@ -31,6 +31,11 @@ RTT (round-trip time). That's why **MANY** (yet **SMALL**) js/css files must be 
 **FEW** (yet **LARGE**) ones for decent page loading time, while the total traffic amount is
 almost the same.
 
+[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining)
+has helped benchmarks to reach
+[A Million requests per second](https://medium.freecodecamp.org/million-requests-per-second-with-python-95c137af319),
+but that's [not helping for realworld cases](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
+
 Newer protocols like `HTTP/2` and [QUIC](https://en.wikipedia.org/wiki/QUIC)
 (a.k.a [HTTP/3](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/))
 are addressing various issues,
@@ -63,6 +68,12 @@ By [Pipelining](<https://en.wikipedia.org/wiki/Pipeline_(computing)>) the underl
 wire, though lantency of each single API call is not improved, the over system can process
 largely more calls in a given window of time, i.e. optimal efficiency at overall throughput.
 
+And **HBI** specifically supports responses returned in different orders than their respective
+requests were sent, so as to break [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
+Without relief from HOL blocking, solutions like
+[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining) is not on a par. See
+[HTTP Pipelining: A security risk without real performance benefits](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
+
 ### API Defined Protocol
 
 **HBI** is a _meta protocol_ for application systems (read **service** software components),
@@ -80,6 +91,16 @@ _peer-scripting-code_ from the other end, a service process defines both its
 network protocol to access the API, at granted efficience.
 
 Such network protocols are called **API Defined Protocol**s.
+
+### First Class Server Push
+
+Server Push is intrinsic to API authors and consumers in defining and consuming the service
+respectively, when the application protocol is implemented with **HBI**.
+
+What should be available to the back-script, and what will be triggered at the consuming
+site in response to each posting conversation it sends, is at the API authors' discretion.
+While the reacting behavior at the consuming site as it's back-scripted, is at the consumer's
+discretion.
 
 ### Example - Download a File in a Room
 
