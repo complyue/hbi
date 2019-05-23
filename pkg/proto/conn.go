@@ -681,7 +681,7 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 
 			// the very expected packet
 
-			obj, err = env.RunInEnv(pkt.Payload, hbic)
+			obj, err = env.RunInEnv(hbic, pkt.Payload)
 			return
 
 		case "":
@@ -689,7 +689,7 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 			// some code to execute preceding code for obj to be received.
 			// todo this harmful and be explicitly disallowed ?
 
-			if _, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 

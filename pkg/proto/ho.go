@@ -339,7 +339,7 @@ func (co *HoCo) hostingThread() {
 
 			// peer is pushing the textual code for side-effect of its landing
 
-			if _, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 
@@ -347,7 +347,7 @@ func (co *HoCo) hostingThread() {
 
 			// peer is requesting this end to push landed result (in textual repr code) back
 
-			if result, err = env.RunInEnv(pkt.Payload, hbic); err != nil {
+			if result, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 			if _, err = wire.SendPacket(Repr(result), "co_recv"); err != nil {

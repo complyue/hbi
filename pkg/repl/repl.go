@@ -109,7 +109,7 @@ func ReplWith(he *hbi.HostingEnv, bannerScript string) {
 
 func runOne(he *hbi.HostingEnv, code string) (result interface{}, err error) {
 
-	result, err = he.RunInEnv(code, context.Background())
+	result, err = he.RunInEnv(context.Background(), code)
 	if err != nil {
 		fmt.Printf("[Error]: %+v\n", err)
 	} else if text, ok := result.(string); ok {

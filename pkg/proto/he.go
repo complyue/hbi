@@ -53,7 +53,7 @@ func (he *HostingEnv) ExposedNames() []string {
 }
 
 // RunInEnv executes `code` within this environment.
-func (he *HostingEnv) RunInEnv(code string, ctx context.Context) (result interface{}, err error) {
+func (he *HostingEnv) RunInEnv(ctx context.Context, code string) (result interface{}, err error) {
 	// this needs not to be thread safe, should only be called from a single hosting goroutine
 	result, err = he.ve.ExecuteContext(ctx, code)
 	return
