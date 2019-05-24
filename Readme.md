@@ -2,27 +2,11 @@
 
 ## The Problem
 
-### One Service On Behalf of Many
+### Inefficient Implementations of Request-Response Pattern
 
-A human user thinks, between actions he/she will take to perform, and the thinking
-usually takes previous action's result into account. Waiting for result/response is
-a rather natural being in single user scenarios.
-
-While most decent computer application systems comprise far more than a single service,
-and even a lone service, are rather likely to be integrated with other systems/services
-into larger solutions, to be useful today.
-
-Such a **service** software typically act on behalf of many users concurrently, with main
-line scenarios involve coordinated operations with other **service**s in reaction to
-each user's each activity. This is largely different from a traditional **client**
-software which assumes single user's activities only. If every user activity is to be
-waited, there will be just too much waitings.
-
-### Inter-Service Communication with request/response pattern
-
-A classical implementation of the classic **request/response** pattern, say `HTTP/1.x`,
-as the most typical example, is to pend subsequent out-bound transportation through
-the underlying transport, wait until the expected response has been sent back from
+Most classical implementations of the classic **Request-Response** pattern are synchronous,
+`HTTP/1.x`, for the most typical example, is to pend subsequent out-bound transportation
+through the underlying transport, wait until the expected response has been sent back from
 peer endpoint, as in-bound transportation through the underlying transport, before
 the next request is let-go to start off.
 
@@ -42,24 +26,40 @@ are addressing various issues,
 especially including the above said ones, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
 
+### One Service On Behalf of Many
+
+A human user thinks, between actions he/she will take to perform, and the thinking
+usually takes previous action's result into account. Waiting for result/response is
+a rather natural being in single user scenarios.
+
+While most decent computer application systems comprise far more than a single service,
+and even a lone service, are rather likely to be integrated with other systems/services
+into larger solutions, to be useful today.
+
+Such a **service** software typically act on behalf of many users concurrently, with main
+line scenarios involve coordinated operations with other **service**s in reaction to
+each user's each activity. This is largely different from a traditional **client**
+software which assumes single user's activities only. If every user activity is to be
+waited, there will be just too much waitings.
+
 ## The Solution
 
-Building new applications with **Hosting Based Interface** - HBI, the classic
-**request/response** pattern can go naturally & very efficiently without imposing the
-dreadful
+**Hosting Based Interface** - HBI just implements asynchronous **Request-Response** pattern
+under the hood, building new services and applications with **HBI**, the classic
+**Request-Response** pattern goes naturally & very efficiently without imposing the dreadful
 [RTT](https://en.wikipedia.org/wiki/Round-trip_delay_time)
 and
 [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
 
-### No Wait At Best, Hosting instead of Receiving
-
-Active receiving is to wait, while hosting is **NO** wait.
-It is best to be **hosting** rather than **receiving**.
+A plus of **HBI** is _scripting_ capability granted to both **request** and **response**
+bodies, so both service authors and consumers can have greater flexibility in implementing
+diversified components speaking a same set of API/Protocol.
 
 ### In Action
 
-Checkout [HBI Chat](https://github.com/complyue/hbichat), start a server, start a client,
-then spam the server with many bots and many file uploads/downloads for fun.
+Checkout [HBI Chat](https://github.com/complyue/hbichat), start a server, start several clients,
+then start spamming the server from most clients, with many bots and many file uploads/downloads.
+Leave 1 or 2 clients observing one or another spammed room for fun.
 
 But better run it on a RamDisk, i.e. cd to `/dev/shm` on systems providing it like Linux, or
 [create one on macOS](https://apple.stackexchange.com/questions/298836/create-an-apfs-ram-disk).
@@ -69,18 +69,6 @@ lifespan just to upload/download random data files.
 That project can be considered an [SSCCE](http://www.sscce.org/) HBI application.
 
 ## What is HBI
-
-### Throughput Oriented Communication Infrastructure
-
-By [Pipelining](<https://en.wikipedia.org/wiki/Pipeline_(computing)>) the underlying transport
-wire, though lantency of each single API call is not improved, but overall, the system can process
-largely more communications in a given window of time, i.e. optimal efficiency at throughput.
-
-And **HBI** specifically supports responses returned in different orders than their respective
-requests were sent, so as to break [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
-Without relief from HOL blocking, solutions like
-[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining) is not on a par, see
-[HTTP Pipelining: A security risk without real performance benefits](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
 
 ### API Defined Protocol
 
@@ -112,6 +100,18 @@ discretion.
 
 And the service site can schedule posting conversations to be started against any connected
 consumer endpoint, at appropriate time, to push system events in realtime.
+
+### Throughput Oriented Communication Infrastructure
+
+By [Pipelining](<https://en.wikipedia.org/wiki/Pipeline_(computing)>) the underlying transport
+wire, though lantency of each single API call is not improved, but overall, the system can process
+largely more communications in a given window of time, i.e. optimal efficiency at throughput.
+
+And **HBI** specifically supports responses returned in different orders than their respective
+requests were sent, so as to break [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
+Without relief from HOL blocking, solutions like
+[HTTP Pipelining](https://en.wikipedia.org/wiki/HTTP_pipelining) is not on a par, see
+[HTTP Pipelining: A security risk without real performance benefits](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
 
 ### Example - Download a File in a Room
 
