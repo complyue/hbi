@@ -74,6 +74,11 @@ func (po *PostingEnd) Done() <-chan struct{} {
 	return po.hbic.Done()
 }
 
+// Disconnected tells whether the underlying HBI connection has been disconnected.
+func (po *PostingEnd) Disconnected() bool {
+	return po.hbic.CancellableContext.Cancelled()
+}
+
 // PoCo is the active, posting conversation.
 //
 // A PoCo is created from application by calling PostingEnd.NewCo()

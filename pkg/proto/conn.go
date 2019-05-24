@@ -579,6 +579,14 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 				hbic.recver = nil
 			}
 
+		case "":
+
+			// back-script to a non-receiving po co, just land it for side-effects
+
+			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
+				return
+			}
+
 		case "co_ack_end":
 
 			// end of response to local po co

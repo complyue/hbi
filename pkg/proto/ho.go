@@ -54,6 +54,11 @@ func (ho *HostingEnd) Done() <-chan struct{} {
 	return ho.hbic.Done()
 }
 
+// Disconnected tells whether the underlying HBI connection has been disconnected.
+func (ho *HostingEnd) Disconnected() bool {
+	return ho.hbic.CancellableContext.Cancelled()
+}
+
 // HoCo is the passive, hosting conversation.
 //
 // A HoCo is triggered by a PoCo from peer's posting endpoint, it is automatically available to
@@ -125,12 +130,24 @@ func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
 	return co.hbic.recvStream(ds)
 }
 
-// StartSend transits this hosting conversation from `recv` stage to `send` stage.
+// FinishRecv transits this hosting conversation from `recv` stage to `work` stage.
 //
-// A hosting conversation starts out in `recv` stage, within which SendXXX() operations can not
-// be performed with it; until its StartSend() is called to transit it to `send` stage, after
-// then SendXXX() operations are allowed but RecvXXX() operations can no longer be performed.
-func (co *HoCo) StartSend() error {
+// As soon as no further value object and data/stream is to be received with a hosting
+// conversation, it should leave `recv` stage to release the underlying HBI transport wire
+// for the next hosting conversation or response to local posting conversation to start off.
+//
+// Explicit transition to `work` stage is only necessary when this hosting conversation
+// is supposed to send any back-script and/or data/stream back to the posting conversation
+// triggered it, and more time is needed for extensive computation/processing done by this
+// goroutine or other resources.
+//
+// A hosting conversion should be closed instead, if nothing is supposed to be sent back;
+// and should transit to `send` stage instead, if the back-sending can start quickly.
+//
+// Note this can only be called from the dedicated hosting goroutine, i.e. from functions
+// exposed to the hosting environment and called by the peer-scripting-code from the remote
+// posting conversation which triggered this ho co.
+func (co *HoCo) FinishRecv() error {
 	if co.recvDone == nil {
 		return errors.New("ho co not in recv stage")
 	}
@@ -161,6 +178,27 @@ func (co *HoCo) StartSend() error {
 	close(co.recvDone)
 	co.recvDone = nil
 
+	return nil
+}
+
+// StartSend transits this hosting conversation from `recv` or `work` stage to `send` stage.
+//
+// As soon as no further back-script and/or data/stream is to be sent with a hosting conversation,
+// it should close to release the underlying HBI transport wire for the next posting conversation
+// to start off or next send-ready hosting conversation to start sending.
+//
+// After all recv operations done, a hosting conversion should be closed instead, if nothing is
+// supposed to be sent back.
+//
+// Note this can only be called from the dedicated hosting goroutine, i.e. from functions
+// exposed to the hosting environment and called by the peer-scripting-code from the remote
+// posting conversation which triggered this ho co.
+func (co *HoCo) StartSend() error {
+	if co.recvDone != nil {
+		if err := co.FinishRecv(); err != nil {
+			return err
+		}
+	}
 	if err := co.hbic.hoCoStartSend(co); err != nil {
 		return err
 	}
@@ -258,6 +296,21 @@ func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 		return err
 	}
 	return co.hbic.sendStream(ds)
+}
+
+// Close closes this hosting conversation, neither send nor recv operation can be performed
+// with a closed hosting conversation.
+//
+// Note this can only be called from the dedicated hosting goroutine, i.e. from functions
+// exposed to the hosting environment and called by the peer-scripting-code from the remote
+// posting conversation which triggered this ho co.
+func (co *HoCo) Close() error {
+	if co.recvDone != nil {
+		if err := co.FinishRecv(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // this must be run as a dedicated goroutine
