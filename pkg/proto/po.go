@@ -187,11 +187,12 @@ func (co *PoCo) StartRecv() error {
 		panic(errors.New("po co not in send stage"))
 	}
 
-	if err := co.hbic.poCoFinishSend(co, false); err != nil {
+	if err := co.hbic.poCoFinishSend(co); err != nil {
 		return err
 	}
 
 	hbic := co.hbic
+
 	// wait begin of ho co ack
 	select {
 	case <-hbic.Done():
@@ -273,13 +274,10 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 // Note this can only be called from the goroutine which created this conversation.
 func (co *PoCo) Close() error {
 	if co.sendDone != nil {
-		co.hbic.poCoFinishSend(co, true)
+		co.hbic.poCoFinishSend(co)
 	}
 
-	if co.recvDone != nil {
-		close(co.recvDone)
-		co.recvDone = nil
-	}
+	close(co.recvDone)
 
 	return nil
 }

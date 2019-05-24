@@ -304,7 +304,7 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 	co = &PoCo{
 		hbic: hbic, coSeq: coSeq,
 		sendDone:   make(chan struct{}),
-		recvDone:   nil, // not sure to do receiving, will be set by StartRecv()
+		recvDone:   make(chan struct{}),
 		beginAcked: make(chan struct{}),
 		endAcked:   make(chan struct{}),
 	}
@@ -375,14 +375,12 @@ func (hbic *HBIC) hoCoFinishSend(co *HoCo) error {
 	return nil
 }
 
-func (hbic *HBIC) poCoFinishSend(co *PoCo, closePoCo bool) error {
+func (hbic *HBIC) poCoFinishSend(co *PoCo) error {
 	hbic.sendMutex.Lock()
 	defer hbic.sendMutex.Unlock()
 
-	if closePoCo {
-		if co != hbic.sender {
-			panic(errors.New("po co not sender"))
-		}
+	if co != hbic.sender {
+		panic(errors.New("po co not current sender ?!"))
 	}
 
 	if err := hbic.sendPacket(co.coSeq, "co_end"); err != nil {
@@ -393,10 +391,6 @@ func (hbic *HBIC) poCoFinishSend(co *PoCo, closePoCo bool) error {
 	co.sendDone = nil
 
 	hbic.sender = nil
-
-	if !closePoCo {
-		co.recvDone = make(chan struct{})
-	}
 
 	return nil
 }
@@ -612,7 +606,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 		case "":
 
-			// back-script to a non-receiving po co, just land it for side-effects
+			// back-script to a po co, just land it for side-effects
 
 			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
@@ -620,7 +614,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 		case "co_ack_begin":
 
-			// direct response on wire to the respective local posting conversation
+			// start of response to a local po co, pull it out from ppc and set as current recver
 
 			v, ok := hbic.ppc.Load(pkt.Payload)
 			if !ok {
@@ -630,13 +624,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 			close(poCo.beginAcked)
 
-			recvDone := poCo.recvDone
-			if recvDone == nil {
-				// po co does not intend to recv, leave it in ppc until co_ack_end received
-				continue
-			}
-
-			// po co intends to recv, remove from ppc, set as current recver
+			// set po co as current recver
 			hbic.recver = poCo
 			hbic.ppc.Delete(poCo.coSeq)
 
@@ -649,51 +637,26 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 				case <-hbic.Done():
 					err = hbic.Err()
 					return
-				case <-recvDone:
+				case <-poCo.recvDone:
 					// po co done receiving
 				}
 			}()
 
-			pkt, err = wire.RecvPacket()
-			if err != nil {
-				if err == io.EOF {
-					// wire disconnected by peer
-					err = nil    // not considered an error
-					hbic.Close() // disconnect normally
-				} else if hbic.CancellableContext.Cancelled() {
-					// active disconnection caused wire reading
-					err = nil // not considered an error
-				}
-				return
+		case "co_ack_end":
+
+			// end of response (i.e. completion) of the local po co, should be current recver
+
+			poCo, ok := hbic.recver.(*PoCo)
+			if !ok {
+				panic(errors.New("po co not current recver on ack end ?!"))
 			}
-			if poCo.coSeq != pkt.Payload {
-				panic(errors.New("co seq mismatch on co_ack_end ?!"))
+			if pkt.Payload != poCo.coSeq {
+				panic(errors.New("po co seq mismatch on ack end ?!"))
 			}
 
 			close(poCo.endAcked)
 
 			hbic.recver = nil
-
-		case "co_ack_end":
-
-			// co_ack_end without co_ack_begin
-
-			v, ok := hbic.ppc.Load(pkt.Payload)
-			if !ok {
-				panic(errors.New("lost po co to ack end ?!"))
-			}
-			poCo := v.(*PoCo)
-
-			if poCo.recvDone != nil {
-				panic(errors.New("po co intends to recv not set as recver on co_ack_begin ?!"))
-			}
-
-			// remove from ppc, this po co fully completed
-			hbic.ppc.Delete(poCo.coSeq)
-
-			close(poCo.endAcked)
-
-			continue
 
 		case "err":
 
@@ -703,7 +666,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 		default:
 
-			discReason = fmt.Sprintf("HBIC unexpected packet: %+v", pkt)
+			discReason = fmt.Sprintf("COKEEPER unexpected packet: %+v", pkt)
 			return
 
 		}
@@ -786,7 +749,7 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 
 		default:
 
-			discReason = fmt.Sprintf("HBIC unexpected packet: %+v", pkt)
+			discReason = fmt.Sprintf("RECV unexpected packet: %+v", pkt)
 			return
 
 		}

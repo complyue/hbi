@@ -416,7 +416,7 @@ func (co *HoCo) hostingThread() {
 
 		default:
 
-			discReason = fmt.Sprintf("HostingEnd unexpected packet: %+v", pkt)
+			discReason = fmt.Sprintf("HO unexpected packet: %+v", pkt)
 			return
 
 		}
