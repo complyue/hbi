@@ -22,11 +22,11 @@ type HBIC struct {
 	wire     HBIWire
 	netIdent string
 
+	// pending posting conversations
+	ppc sync.Map
+
 	// increamental record for conversation sequence numbers
 	nextCoSeq int
-	// pending posting conversations
-	ppc map[string]*PoCo
-
 	// current sending conversation
 	sender interface{}
 	// to guard access to sender related fields
@@ -175,6 +175,11 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 	hbic.sendMutex.Lock()
 	defer hbic.sendMutex.Unlock()
 
+	if co.sendDone != nil {
+		panic(errors.New("ho co starting send twice ?!"))
+	}
+	co.sendDone = make(chan struct{})
+
 	// wait current sender done
 	var sendDone chan struct{}
 	sender := hbic.sender
@@ -185,11 +190,11 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 		case *HoCo:
 			sendDone = senderCo.sendDone
 		default:
-			panic("unexpected sender type")
+			panic(errors.New("unexpected sender type"))
 		}
 
 		if sendDone == nil {
-			panic("inplace sender sendDone cleared ?!")
+			panic(errors.New("inplace sender sendDone cleared ?!"))
 		}
 
 		if err := func() error {
@@ -250,11 +255,11 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 		case *HoCo:
 			sendDone = senderCo.sendDone
 		default:
-			panic("unexpected sender type")
+			panic(errors.New("unexpected sender type"))
 		}
 
 		if sendDone == nil {
-			panic("inplace sender sendDone cleared ?!")
+			panic(errors.New("inplace sender sendDone cleared ?!"))
 		}
 
 		if err = func() error {
@@ -291,7 +296,7 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 		if hbic.nextCoSeq > details.MaxCoSeq {
 			hbic.nextCoSeq = details.MinCoSeq
 		}
-		if _, ok := hbic.ppc[coSeq]; !ok {
+		if _, ok := hbic.ppc.Load(coSeq); !ok {
 			break // the new coSeq must not be occupied by a pending co
 		}
 	}
@@ -303,18 +308,78 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 		beginAcked: make(chan struct{}),
 		endAcked:   make(chan struct{}),
 	}
-	hbic.ppc[coSeq] = co
+	hbic.ppc.Store(coSeq, co)
 	hbic.sender = co
 
 	err = hbic.sendPacket(co.CoSeq(), "co_begin")
 	return
 }
 
-func (hbic *HBIC) poCoFinishSend(co *PoCo, closeAsWell bool) error {
+func (hbic *HBIC) hoCoFinishRecv(co *HoCo) error {
+	if co.recvDone == nil {
+		return errors.New("ho co finishing recv twice ?!")
+	}
+
+	hbic.recvMutex.Lock()
+	defer hbic.recvMutex.Unlock()
+
+	pkt, err := hbic.wire.RecvPacket()
+	if err != nil {
+		if err == io.EOF {
+			// wire disconnected by peer
+			err = nil    // not considered an error
+			hbic.Close() // disconnect normally
+		} else if hbic.CancellableContext.Cancelled() {
+			// active disconnection caused wire reading
+			err = nil // not considered an error
+		}
+		return err
+	}
+
+	if pkt.WireDir != "co_end" {
+		return errors.Errorf("Extra packet not landed by ho co before leaving recv stage: %+v", pkt)
+	}
+	if pkt.Payload != co.coSeq {
+		return errors.New("co seq mismatch on co_end")
+	}
+
+	// signal coKeeper to start receiving next co
+	close(co.recvDone)
+	co.recvDone = nil
+
+	return nil
+}
+
+func (hbic *HBIC) hoCoFinishSend(co *HoCo) error {
+	if co.sendDone == nil {
+		panic(errors.New("ho co never started or already finished sending ?!"))
+	}
+
 	hbic.sendMutex.Lock()
 	defer hbic.sendMutex.Unlock()
 
-	if closeAsWell {
+	if hbic.sender != co {
+		panic(errors.New("ho co not current sender ?!"))
+	}
+
+	// notify peer the ho co triggered by its po co has completed
+	if _, err := hbic.wire.SendPacket(co.coSeq, "co_ack_end"); err != nil {
+		return err
+	}
+
+	close(co.sendDone)
+	co.sendDone = nil
+
+	hbic.sender = nil
+
+	return nil
+}
+
+func (hbic *HBIC) poCoFinishSend(co *PoCo, closePoCo bool) error {
+	hbic.sendMutex.Lock()
+	defer hbic.sendMutex.Unlock()
+
+	if closePoCo {
 		if co != hbic.sender {
 			panic(errors.New("po co not sender"))
 		}
@@ -329,7 +394,7 @@ func (hbic *HBIC) poCoFinishSend(co *PoCo, closeAsWell bool) error {
 
 	hbic.sender = nil
 
-	if !closeAsWell {
+	if !closePoCo {
 		co.recvDone = make(chan struct{})
 	}
 
@@ -345,7 +410,6 @@ func NewConnection(wire HBIWire, env *HostingEnv) (*PostingEnd, *HostingEnd, err
 		netIdent: wire.NetIdent(),
 
 		nextCoSeq: details.MinCoSeq,
-		ppc:       make(map[string]*PoCo),
 	}
 	po := &PostingEnd{
 		hbic: hbic,
@@ -494,7 +558,10 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 	hbic.recvMutex.Lock()
 	defer hbic.recvMutex.Unlock()
 
-	for !hbic.Cancelled() && err == nil && len(discReason) <= 0 {
+	for {
+		if hbic.Cancelled() || err != nil || len(discReason) > 0 {
+			panic(errors.New("?!"))
+		}
 
 		pkt, err = wire.RecvPacket()
 		if err != nil {
@@ -518,7 +585,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 			hoCo := &HoCo{
 				hbic: hbic, coSeq: pkt.Payload,
 				recvDone: recvDone,
-				sendDone: make(chan struct{}),
+				sendDone: nil,
 			}
 
 			hbic.recver = hoCo
@@ -543,42 +610,6 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 			// locked recvMutex again, clear recver
 			hbic.recver = nil
 
-		case "co_ack_begin":
-
-			// direct response on wire to the respective local posting conversation
-
-			poCo, ok := hbic.ppc[pkt.Payload]
-			if !ok {
-				panic("lost po co to ack ?!")
-			}
-
-			delete(hbic.ppc, poCo.coSeq)
-
-			hbic.recver = poCo
-
-			close(poCo.beginAcked)
-
-			recvDone := poCo.recvDone
-			if recvDone != nil {
-				// po co intends to recv
-				func() {
-					// wait po co done receiving with recvMutex unlocked
-					hbic.recvMutex.Unlock()
-					defer hbic.recvMutex.Lock()
-
-					select {
-					case <-hbic.Done():
-						err = hbic.Err()
-						return
-					case <-recvDone:
-						// po co done receiving
-					}
-				}()
-			} else {
-				// po co does not intend to recv
-				hbic.recver = nil
-			}
-
 		case "":
 
 			// back-script to a non-receiving po co, just land it for side-effects
@@ -587,39 +618,80 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 				return
 			}
 
+		case "co_ack_begin":
+
+			// direct response on wire to the respective local posting conversation
+
+			v, ok := hbic.ppc.Load(pkt.Payload)
+			if !ok {
+				panic(errors.New("lost po co to ack begin ?!"))
+			}
+			poCo := v.(*PoCo)
+
+			close(poCo.beginAcked)
+
+			recvDone := poCo.recvDone
+			if recvDone == nil {
+				// po co does not intend to recv, leave it in ppc until co_ack_end received
+				continue
+			}
+
+			// po co intends to recv, remove from ppc, set as current recver
+			hbic.recver = poCo
+			hbic.ppc.Delete(poCo.coSeq)
+
+			func() {
+				// wait po co done receiving with recvMutex unlocked
+				hbic.recvMutex.Unlock()
+				defer hbic.recvMutex.Lock()
+
+				select {
+				case <-hbic.Done():
+					err = hbic.Err()
+					return
+				case <-recvDone:
+					// po co done receiving
+				}
+			}()
+
+			pkt, err = wire.RecvPacket()
+			if err != nil {
+				if err == io.EOF {
+					// wire disconnected by peer
+					err = nil    // not considered an error
+					hbic.Close() // disconnect normally
+				} else if hbic.CancellableContext.Cancelled() {
+					// active disconnection caused wire reading
+					err = nil // not considered an error
+				}
+				return
+			}
+			if poCo.coSeq != pkt.Payload {
+				panic(errors.New("co seq mismatch on co_ack_end ?!"))
+			}
+
+			close(poCo.endAcked)
+
+			hbic.recver = nil
+
 		case "co_ack_end":
 
-			// end of response to local po co
+			// co_ack_end without co_ack_begin
 
-			if hbic.recver == nil {
-				// co_ack_end without co_ack_begin
-
-				poCo, ok := hbic.ppc[pkt.Payload]
-				if !ok {
-					panic("lost po co to ack ?!")
-				}
-
-				delete(hbic.ppc, poCo.coSeq)
-
-				close(poCo.endAcked)
-
-			} else {
-
-				// co_ack_end after co_ack_begin
-
-				poCo, ok := hbic.recver.(*PoCo)
-				if !ok {
-					panic("?!")
-				}
-				if poCo.coSeq != pkt.Payload {
-					panic("co seq mismatch on co_ack_end ?!")
-				}
-
-				close(poCo.endAcked)
-
-				hbic.recver = nil
-
+			v, ok := hbic.ppc.Load(pkt.Payload)
+			if !ok {
+				panic(errors.New("lost po co to ack end ?!"))
 			}
+			poCo := v.(*PoCo)
+
+			if poCo.recvDone != nil {
+				panic(errors.New("po co intends to recv not set as recver on co_ack_begin ?!"))
+			}
+
+			// remove from ppc, this po co fully completed
+			hbic.ppc.Delete(poCo.coSeq)
+
+			close(poCo.endAcked)
 
 			continue
 
@@ -671,7 +743,7 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 
 	for {
 		if err != nil || len(discReason) > 0 {
-			panic("?!")
+			panic(errors.New("?!"))
 		}
 
 		if hbic.Cancelled() {
