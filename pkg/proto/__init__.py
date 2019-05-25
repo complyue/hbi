@@ -1,4 +1,3 @@
-from .co import *
 from .conn import *
 from .he import *
 from .ho import *
@@ -7,9 +6,6 @@ from .wire import *
 
 __all__ = [
 
-    # exports from .co
-    'Conver', 'PoCo', 'HoCo',
-
     # exports from .conn
     'HBIC',
 
@@ -17,10 +13,10 @@ __all__ = [
     'HostingEnv', 'run_py',
 
     # exports from .ho
-    'HostingEnd',
+    'HostingEnd', 'HoCo',
 
     # exports from .po
-    'PostingEnd',
+    'PostingEnd', 'PoCo',
 
     # exports from .wire
     'HBIWire',

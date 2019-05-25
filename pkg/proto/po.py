@@ -4,9 +4,8 @@ from collections import deque
 from typing import *
 
 from ..log import *
-from .co import *
 
-__all__ = ["PostingEnd"]
+__all__ = ["PostingEnd", "PoCo"]
 
 logger = get_logger(__name__)
 
@@ -30,10 +29,6 @@ class PostingEnd:
         self._remote_addr = "<unwired>"
 
     @property
-    def ho(self):
-        return self._hbic.ho
-
-    @property
     def remote_addr(self):
         return self._remote_addr
 
@@ -50,8 +45,8 @@ class PostingEnd:
 
     async def notif(self, code: str):
         """
-        notif is short hand to push a piece/sequence of code to peer for landing,
-        within a posting conversation.
+        notif is shorthand to (implicitly) create a posting conversation, which is closed
+        immediately after `code` is sent with it.
 
         """
 
@@ -72,8 +67,8 @@ class PostingEnd:
         ],
     ):
         """
-        notif_data is short hand to push a piece/sequence of code to peer for landing,
-        with binary data/stream following, within a posting conversation.
+        notif_data is shorthand to (implicitly) create a posting conversation, which is closed
+        immediately after `code` and `bufs` are sent with it.
 
         """
         hbic = self._hbic
@@ -101,8 +96,7 @@ class _PoCoCtx:
         self._co = None
 
     async def __aenter__(self):
-        co = await self._hbic.new_po_co()
-        assert co._begin_acked_fut is not None
+        co = await self._hbic._new_po_co()
 
         self._co = co
         return co
@@ -111,34 +105,223 @@ class _PoCoCtx:
         hbic = self._hbic
         co = self._co
 
-        try:
-            if co._begin_acked_fut is None:
-                raise asyncio.InvalidStateError("co_begin not sent yet!")
-            if co._end_acked_fut is not None:
-                raise asyncio.InvalidStateError("co_end sent already!")
+        if not co._send_done_fut.done():
+            await hbic._po_co_finish_send(co)
 
-            assert co is hbic._coq[-1], "co not current sender?!"
-
-            co._end_acked_fut = asyncio.get_running_loop().create_future()
-
-            try:
-                await hbic._send_packet(co.co_seq, b"co_end")
-
-                co._send_done_fut.set_result(co.co_seq)
-            except Exception as exc:
-                co._end_acked_fut.set_exception(exc)
-
-                if not co._send_done_fut.done():
-                    co._send_done_fut.set_exception(exc)
-
-                raise
-        finally:
-            if not co._send_done_fut.done():
-                co._send_done_fut.set_exception(
-                    asyncio.IncompleteReadError("abnormal co end")
-                )
+        co._recv_done_fut.set_result(None)
 
     def __enter__(self):
-        raise TypeError(
-            "do you mean `async with po.co():` instead of `with po.co():` ?"
+        raise TypeError("you'd use `async with po.co():` instead of `with po.co():` ?")
+
+
+class PoCo:
+    """
+    PoCo is the active, posting conversation.
+
+    A PoCo is created and used from application like:
+        async with po.co() as co:
+            await co.send_xxx(...)
+
+            await co.start_recv()
+
+            await co.recv_xxx(...)
+
+    """
+
+    __slots__ = (
+        "_hbic",
+        "_co_seq",
+        "_send_done_fut",
+        "_begin_acked_fut",
+        "_recv_done_fut",
+        "_end_acked_fut",
+    )
+
+    def __init__(self, hbic, co_seq: str):
+        self._hbic = hbic
+        self._co_seq = co_seq
+
+        loop = asyncio.get_running_loop()
+        self._send_done_fut = loop.create_future()
+        self._begin_acked_fut = loop.create_future()
+        self._recv_done_fut = loop.create_future()
+        self._end_acked_fut = loop.create_future()
+
+    @property
+    def co_seq(self):
+        """
+        co_seq returns the sequence number of this conversation.
+
+        The sequence number of a posting conversation is assigned by the posting endpoint created
+        it, the value does not necessarily be unique across a long time period, but won't repeat
+        among a lot of conversations per sent over a wire in line.
+
+        """
+        return self._co_seq
+
+    async def send_code(self, code: str):
+        """
+        send_code sends `code` to peer's hosting endpoint for landing by its hosting environment.
+
+        Only side effects are expected from landing of `code` at peer site.
+
+        Note this can only be called in `send` stage, and from the aio task which created this
+        conversation.
+
+        """
+        hbic = self._hbic
+
+        if self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co not in send stage")
+        assert self is hbic._sender, "po co not current sender ?!"
+
+        await hbic._send_packet(code)
+
+    async def send_obj(self, code: str):
+        """
+        send_obj sends `code` to peer's hosting endpoint for landing by its hosting environment.
+        
+        The respective hosting conversation at peer site is expected to receive the result value
+        from landing of `code`, by calling HoCo.recv_obj()
+        
+        Note this can only be called in `send` stage, and from the aio task which created this
+        conversation.
+
+        """
+
+        hbic = self._hbic
+
+        if self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co not in send stage")
+        assert self is hbic._sender, "po co not current sender ?!"
+
+        await hbic._send_packet(code, b"co_recv")
+
+    async def send_data(
+        self,
+        bufs: Union[
+            bytes,
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly,
+            # normally with a generator function call
+            Sequence[Union[bytes, bytearray, memoryview]],
+        ],
+    ):
+        """
+        send_data sends a single chunk of binary data or a data stream in form of a series of 
+        chunks to peer site.
+
+        The respective hosting conversation at peer site is expected to receive the data by
+        calling HoCo.recv_data()
+
+        Note this can only be called in `send` stage, and from the aio task which created this
+        conversation.
+
+        """
+
+        hbic = self._hbic
+
+        if self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co not in send stage")
+        assert self is hbic._sender, "po co not current sender ?!"
+
+        await hbic._send_data(bufs)
+
+    async def start_recv(self):
+        """
+        start_recv transits this posting conversation from `send` stage to `recv` stage.
+
+        Once in `recv` stage, no `send` operation can be performed any more with this conversation,
+        the underlying wire is released for other posting conversation to start off.
+
+        Note this can only be called in `send` stage, and from the aio task which created this
+        conversation.
+
+        """
+
+        hbic = self._hbic
+
+        if self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co not in send stage")
+
+        await hbic._po_co_finish_send(self)
+
+        # wait begin of ho co ack
+        await self._begin_acked_fut
+
+        assert self is hbic._recver, "po co not current recver ?!"
+
+    async def recv_obj(self):
+        """
+        recv_obj returns the landed result of a piece of back-script `code` sent with the triggered
+        hosting conversation at remote site via HoCo.send_obj(code)
+
+        Note this can only be called in `recv` stage, and from the aio task which created this
+        conversation.
+
+        """
+
+        if not self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co still in send stage")
+
+        if self._recv_done_fut is None:
+            raise asyncio.InvalidStateError("po co not in recv stage")
+
+        assert self._begin_acked_fut.done(), "po co response not started ?!"
+
+        hbic = self._hbic
+        assert self is hbic._recver, "po co not current recver ?!"
+
+        return await hbic._recv_one_obj()
+
+    async def recv_data(
+        self,
+        bufs: Union[
+            bytearray,
+            memoryview,
+            # or sequence of them, i.e. streaming on-the-fly
+            Sequence[Union[bytearray, memoryview]],
+        ],
+    ):
+        """
+        recv_data receives the binary data/stream sent with the triggered hosting conversation at
+        remote site via HoCo.send_data()
+
+        Note this can only be called in `recv` stage, and from the aio task which created this
+        conversation.
+
+        """
+
+        recv_fut = asyncio.get_running_loop().create_future()
+        await self._rdq.put((bufs, recv_fut))
+
+        disc_fut = self._hbic._disc_fut
+        done, pending = await asyncio.wait(
+            (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
         )
+        if recv_fut.done():
+            await recv_fut  # exception will be propagated if ever raised
+            return
+        # the done one must be disc_fut
+        raise disc_fut.exception() or asyncio.InvalidStateError(f"hbic disconnected")
+
+    async def wait_completed(self):
+        """
+        wait_completed returns until this posting conversation has been fully processed with
+        the triggered hosting conversation at remote site done, or asyncio.InvalidStateError
+        will be raised if the underlying HBI connection is disconnected before that.
+
+        Subsequent processes depending on the success of this conversation's completion can
+        call this to await the signal of proceed.
+
+        Successful return from this method can confirm the final success of
+        this conversation, as well its `recv` stage. i.e. all peer-scripting-code and data/stream
+        sent with this conversation has been landed by peer's hosting endpoint, with a triggered
+        hosting conversation, and all back-scripts (plus data/stream if any) as the response
+        from that hosting conversation has been landed by local hosting endpoint, and received
+        with this posting conversation (if any recv ops involved).
+
+        """
+
+        await self._end_acked_fut  # propagate exception if any
