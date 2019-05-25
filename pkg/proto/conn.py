@@ -300,18 +300,22 @@ HBIC {self.net_ident} disconnecting due to error:
         wire = self.wire
         pkt_available = self.packet_available
 
-        while wire.is_connected():
-            wire.resume_recv()
+        try:
+            while wire.is_connected():
+                wire.resume_recv()
 
-            await pkt_available.wait()
+                await pkt_available.wait()
 
-            pkt = wire.recv_packet()
-            if pkt is not None:
-                return pkt
+                pkt = wire.recv_packet()
+                if pkt is not None:
+                    return pkt
 
-            # no or only partial packet arrived
-            # clear the event to wait until new data arrived
-            pkt_available.clear()
+                # no or only partial packet arrived
+                # clear the event to wait until new data arrived
+                pkt_available.clear()
+        except asyncio.CancelledError:
+            # disconnection most probabily
+            return None
 
         return None
 
@@ -475,16 +479,43 @@ HBIC {self.net_ident} disconnecting due to error:
         co._recv_done_fut.set_result(None)
 
     async def _ho_co_finish_send(self, co: HoCo):
-        assert co._send_done_fut is not None, "ho co never started sending ?!"
-        assert not co._send_done_fut.done(), "ho co already finished sending ?!"
+        if co._send_done_fut is not None:
+            if co._send_done_fut.done():
+                return  # already finished
 
-        assert co is self._sender, "ho co not current sender ?!"
+            assert co is self._sender, "ho co not current sender ?!"
 
+            await self._send_packet(co._co_seq, b"co_ack_end")
+
+            co._send_done_fut.set_result(None)
+
+            self._sender = None
+
+            return
+
+        # ho co never started sending
+        # wait opportunity to send, and send an empty co_ack_begin/co_ack_end pair
+
+        # wait current sender done
+        sender = self._sender
+        while sender is not None:
+            done, pending = await asyncio.wait(
+                [sender._send_done_fut, disc_fut], return_when=asyncio.FIRST_COMPLETED
+            )
+            if disc_fut in done:  # disconnected already
+                raise asyncio.InvalidStateError("hbic disconnected")
+            # the first awaken aio task sees current sender being None, as it winning the race,
+            # it's thus obliged to set a new sender, putting rest waiters loop more iterations awaiting.
+            sender = self._sender
+
+        # we don't need to set a sender here,
+        # just send a pair of co_ack_begin/co_ack_end pair, telling the po co that ho co has completed
+        await self._send_packet(co._co_seq, b"co_ack_begin")
         await self._send_packet(co._co_seq, b"co_ack_end")
 
-        co._send_done_fut.set_result(None)
-
-        self._sender = None
+        fut = asyncio.get_running_loop().create_future()
+        fut.set_result(None)
+        co._send_done_fut = fut
 
     async def _po_co_finish_send(self, co: PoCo):
         assert co is self._sender, "po co not current sender ?!"
@@ -522,7 +553,7 @@ HBIC {self.net_ident} disconnecting due to error:
 
                 pkt = await self._recv_packet()
                 if pkt is None:
-                    assert not self.wire.is_connected()
+                    # disconnected or disconnecting
                     break
                 # got a packet
                 payload, wire_dir = pkt

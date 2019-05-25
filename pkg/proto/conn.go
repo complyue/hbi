@@ -357,8 +357,8 @@ func (hbic *HBIC) hoCoFinishSend(co *HoCo) error {
 		return nil
 	}
 
-	// never sent anything, wait opportunity to send,
-	// and send an empty co_ack_begin/co_ack_end pair
+	// ho co never started sending
+	// wait opportunity to send, and send an empty co_ack_begin/co_ack_end pair
 
 	// wait current sender done
 	var sendDone chan struct{}

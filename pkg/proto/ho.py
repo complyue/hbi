@@ -287,8 +287,7 @@ class HoCo:
         if not self._recv_done_fut.done():
             await hbic._ho_co_finish_recv(self)
 
-        if not self._send_done_fut.done():
-            await hbic._ho_co_finish_send(self)
+        await hbic._ho_co_finish_send(self)
 
     # this must be spawned as a dedicated aio task
     async def _hosting_thread(self):
@@ -320,13 +319,10 @@ class HoCo:
                     if self._recv_done_fut.done():
                         # recv actively finished by the exposed reacting function
 
-                        send_done_fut = self._send_done_fut
-                        if send_done_fut is not None and not send_done_fut.done():
-                            await hbic._ho_co_finish_send(self)
-                        else:
-                            # ho co never started sending, or explicitly closed by reacting func
-                            pass
+                        # finish send anyway
+                        await hbic._ho_co_finish_send(self)
 
+                        # terminate this hosting thread anyway
                         return
 
                 elif "co_send" == wire_dir:
@@ -350,12 +346,7 @@ class HoCo:
 
                     self._recv_done_fut.set_result(None)
 
-                    send_done_fut = self._send_done_fut
-                    if send_done_fut is not None and not send_done_fut.done():
-                        await hbic._ho_co_finish_send(self)
-                    else:
-                        # ho co never started sending, or explicitly closed by reacting func
-                        pass
+                    await hbic._ho_co_finish_send(self)
 
                     return
 
