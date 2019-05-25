@@ -222,7 +222,7 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 	}
 
 	hbic.sender = co
-	if _, err := hbic.wire.SendPacket(co.coSeq, "co_ack_begin"); err != nil {
+	if err := hbic.sendPacket(co.coSeq, "co_ack_begin"); err != nil {
 		return err
 	}
 
@@ -305,7 +305,7 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 
 func (hbic *HBIC) hoCoFinishRecv(co *HoCo) error {
 	if co.recvDone == nil {
-		return errors.New("ho co finishing recv twice ?!")
+		return errors.New("ho co not in recv stage ?!")
 	}
 
 	hbic.recvMutex.Lock()
@@ -331,26 +331,86 @@ func (hbic *HBIC) hoCoFinishRecv(co *HoCo) error {
 }
 
 func (hbic *HBIC) hoCoFinishSend(co *HoCo) error {
-	if co.sendDone == nil {
-		panic(errors.New("ho co never started or already finished sending ?!"))
+	if co.sendDone == closedChan {
+		// already finished
+		return nil
 	}
 
 	hbic.sendMutex.Lock()
 	defer hbic.sendMutex.Unlock()
 
-	if hbic.sender != co {
-		panic(errors.New("ho co not current sender ?!"))
+	if co.sendDone != nil {
+		if hbic.sender != co {
+			panic(errors.New("ho co not current sender ?!"))
+		}
+
+		// notify peer the ho co triggered by its po co has completed
+		if err := hbic.sendPacket(co.coSeq, "co_ack_end"); err != nil {
+			return err
+		}
+
+		close(co.sendDone)
+		co.sendDone = closedChan
+
+		hbic.sender = nil
+
+		return nil
 	}
 
-	// notify peer the ho co triggered by its po co has completed
-	if _, err := hbic.wire.SendPacket(co.coSeq, "co_ack_end"); err != nil {
+	// never sent anything, wait opportunity to send,
+	// and send an empty co_ack_begin/co_ack_end pair
+
+	// wait current sender done
+	var sendDone chan struct{}
+	sender := hbic.sender
+	for sender != nil {
+		switch senderCo := sender.(type) {
+		case *PoCo:
+			sendDone = senderCo.sendDone
+		case *HoCo:
+			sendDone = senderCo.sendDone
+		default:
+			panic(errors.New("unexpected sender type"))
+		}
+
+		if sendDone == nil {
+			panic(errors.New("inplace sender sendDone cleared ?!"))
+		}
+
+		if err := func() error {
+			// release sendMutex during waiting for send done, or it's deadlock
+			hbic.sendMutex.Unlock()
+			defer hbic.sendMutex.Lock()
+
+			select {
+			case <-hbic.Done():
+				// disconnected already
+				err := hbic.Err()
+				return err
+			case <-sendDone:
+				// normal case
+			}
+
+			return nil
+		}(); err != nil {
+			return err
+		}
+
+		// locked sendMutex again, winner of the race sees current sender cleared,
+		// it's thus obliged to set a new sender, putting rest waiters loop more iterations awaiting.
+		sender = hbic.sender
+	}
+
+	// we don't need to set a sender here,
+	// just send a pair of co_ack_begin/co_ack_end pair, telling the po co that ho co has completed
+	if err := hbic.sendPacket(co.coSeq, "co_ack_begin"); err != nil {
+		return err
+	}
+	if err := hbic.sendPacket(co.coSeq, "co_ack_end"); err != nil {
 		return err
 	}
 
-	close(co.sendDone)
-	co.sendDone = nil
-
-	hbic.sender = nil
+	co.sendDone = closedChan
 
 	return nil
 }

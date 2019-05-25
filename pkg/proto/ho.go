@@ -274,10 +274,8 @@ func (co *HoCo) Close() error {
 			return err
 		}
 	}
-	if co.sendDone != nil {
-		if err := co.hbic.hoCoFinishSend(co); err != nil {
-			return err
-		}
+	if err := co.hbic.hoCoFinishSend(co); err != nil {
+		return err
 	}
 	return nil
 }
@@ -361,14 +359,12 @@ func (co *HoCo) hostingThread() {
 			if co.recvDone == nil {
 				// recv actively finished by the exposed reacting function
 
-				if co.sendDone != nil {
-					if err = hbic.hoCoFinishSend(co); err != nil {
-						return
-					}
-				} else {
-					// ho co never started sending, or explicitly closed by reacting func
+				// finish send anyway
+				if err = hbic.hoCoFinishSend(co); err != nil {
+					return
 				}
 
+				// terminate this hosting thread anyway
 				return
 			}
 
@@ -398,12 +394,8 @@ func (co *HoCo) hostingThread() {
 			close(co.recvDone)
 			co.recvDone = nil
 
-			if co.sendDone != nil {
-				if err = hbic.hoCoFinishSend(co); err != nil {
-					return
-				}
-			} else {
-				// ho co never started sending, or explicitly closed by reacting func
+			if err = hbic.hoCoFinishSend(co); err != nil {
+				return
 			}
 
 			return
