@@ -216,26 +216,14 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 			return err
 		}
 
-		// locked sendMutex again, if current sender is cleared, this goroutine has won the race
-		// to set a new sender
+		// locked sendMutex again, winner of the race sees current sender cleared,
+		// it's thus obliged to set a new sender, putting rest waiters loop more iterations awaiting.
 		sender = hbic.sender
 	}
 
+	hbic.sender = co
 	if _, err := hbic.wire.SendPacket(co.coSeq, "co_ack_begin"); err != nil {
 		return err
-	}
-
-	hbic.sender = co
-
-	return nil
-}
-
-func (hbic *HBIC) recverHoCo() *HoCo {
-	hbic.recvMutex.Lock()
-	defer hbic.recvMutex.Unlock()
-
-	if hoCo, ok := hbic.recver.(*HoCo); ok {
-		return hoCo
 	}
 
 	return nil
@@ -284,8 +272,8 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 			return
 		}
 
-		// locked sendMutex again, if current sender is cleared, this goroutine has won the race
-		// to set a new sender
+		// locked sendMutex again, winner of the race sees current sender cleared,
+		// it's thus obliged to set a new sender, putting rest waiters loop more iterations awaiting.
 		sender = hbic.sender
 	}
 
@@ -325,14 +313,6 @@ func (hbic *HBIC) hoCoFinishRecv(co *HoCo) error {
 
 	pkt, err := hbic.wire.RecvPacket()
 	if err != nil {
-		if err == io.EOF {
-			// wire disconnected by peer
-			err = nil    // not considered an error
-			hbic.Close() // disconnect normally
-		} else if hbic.CancellableContext.Cancelled() {
-			// active disconnection caused wire reading
-			err = nil // not considered an error
-		}
 		return err
 	}
 
@@ -621,12 +601,12 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 				panic(errors.New("lost po co to ack begin ?!"))
 			}
 			poCo := v.(*PoCo)
+			hbic.ppc.Delete(poCo.coSeq)
 
 			close(poCo.beginAcked)
 
 			// set po co as current recver
 			hbic.recver = poCo
-			hbic.ppc.Delete(poCo.coSeq)
 
 			func() {
 				// wait po co done receiving with recvMutex unlocked

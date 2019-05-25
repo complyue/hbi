@@ -25,7 +25,7 @@ func (po *PostingEnd) NewCo() (*PoCo, error) {
 }
 
 // Notif is shorthand to (implicitly) create a posting conversation, which is closed
-// immediately after calling its SendCode(code)
+// immediately after `code` is sent with it.
 func (po *PostingEnd) Notif(code string) (err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
@@ -40,7 +40,7 @@ func (po *PostingEnd) Notif(code string) (err error) {
 }
 
 // NotifData is shorthand to (implicitly) create a posting conversation, which is closed
-// immediately after calling its SendCode(code) and SendData(d)
+// immediately after `code` and `d` are sent with it.
 func (po *PostingEnd) NotifData(code string, d []byte) (err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
@@ -96,8 +96,8 @@ type PoCo struct {
 // CoSeq returns the sequence number of this conversation.
 //
 // The sequence number of a posting conversation is assigned by the posting endpoint created
-// it, the value does not necessarily be unique within a long time period, but won't repeat
-// among millons of conversations per sent over a wire in line.
+// it, the value does not necessarily be unique across a long time period, but won't repeat
+// among a lot of conversations per sent over a wire in line.
 func (co *PoCo) CoSeq() string {
 	return co.coSeq
 }
@@ -183,15 +183,15 @@ func (co *PoCo) SendStream(ds func() ([]byte, error)) error {
 // Note this can only be called in `send` stage, and from the goroutine which created this
 // conversation.
 func (co *PoCo) StartRecv() error {
+	hbic := co.hbic
+
 	if co.sendDone == nil {
 		panic(errors.New("po co not in send stage"))
 	}
 
-	if err := co.hbic.poCoFinishSend(co); err != nil {
+	if err := hbic.poCoFinishSend(co); err != nil {
 		return err
 	}
-
-	hbic := co.hbic
 
 	// wait begin of ho co ack
 	select {

@@ -34,7 +34,15 @@ func (ho *HostingEnd) NetIdent() string {
 
 // Co returns the current hosting conversation in `recv` stage.
 func (ho *HostingEnd) Co() *HoCo {
-	return ho.hbic.recverHoCo()
+	hbic := ho.hbic
+	hbic.recvMutex.Lock()
+	defer hbic.recvMutex.Unlock()
+
+	if hoCo, ok := hbic.recver.(*HoCo); ok {
+		return hoCo
+	}
+
+	return nil
 }
 
 // Disconnect disconnects the underlying wire of the HBI connection, optionally with
@@ -322,21 +330,6 @@ func (co *HoCo) hostingThread() {
 		}
 	}()
 
-	defer func() {
-		if hbic.Cancelled() || err != nil || len(discReason) > 0 {
-			// hbic destined to disconnect, keep the scene for postmortem
-			return
-		}
-
-		if co.sendDone != nil {
-			if err = hbic.hoCoFinishSend(co); err != nil {
-				return
-			}
-		} else {
-			// ho co never started sending, or explicitly closed by reacting func
-		}
-	}()
-
 	for {
 		if hbic.Cancelled() || err != nil || len(discReason) > 0 || co.recvDone == nil {
 			panic(errors.New("?!"))
@@ -359,7 +352,6 @@ func (co *HoCo) hostingThread() {
 		switch pkt.WireDir {
 
 		case "":
-
 			// peer is pushing the textual code for side-effect of its landing
 
 			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
@@ -368,11 +360,19 @@ func (co *HoCo) hostingThread() {
 
 			if co.recvDone == nil {
 				// recv actively finished by the exposed reacting function
+
+				if co.sendDone != nil {
+					if err = hbic.hoCoFinishSend(co); err != nil {
+						return
+					}
+				} else {
+					// ho co never started sending, or explicitly closed by reacting func
+				}
+
 				return
 			}
 
 		case "co_send":
-
 			// peer is requesting this end to push landed result (in textual repr code) back
 
 			if result, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
@@ -384,7 +384,6 @@ func (co *HoCo) hostingThread() {
 			}
 
 		case "co_end":
-
 			// done with this hosting conversation
 
 			if pkt.Payload != co.coSeq {
@@ -399,10 +398,17 @@ func (co *HoCo) hostingThread() {
 			close(co.recvDone)
 			co.recvDone = nil
 
+			if co.sendDone != nil {
+				if err = hbic.hoCoFinishSend(co); err != nil {
+					return
+				}
+			} else {
+				// ho co never started sending, or explicitly closed by reacting func
+			}
+
 			return
 
 		case "co_recv":
-
 			// pushing obj to a ho co
 
 			discReason = "co_recv without priori receiving code under landing"
