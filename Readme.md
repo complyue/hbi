@@ -20,9 +20,10 @@ has helped benchmarks to reach
 [A Million requests per second](https://medium.freecodecamp.org/million-requests-per-second-with-python-95c137af319),
 but that's [not helping for realworld cases](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
 
-Newer protocols like `HTTP/2` and [HTTP/3](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/)
-(a.k.a [HTTP-over-](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/)
-[QUIC](https://en.wikipedia.org/wiki/QUIC))
+Newer protocols like `HTTP/2` and `HTTP/3` (a.k.a 
+[HTTP-over-](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/)
+[QUIC](https://en.wikipedia.org/wiki/QUIC)
+)
 are addressing various issues,
 especially including the above said ones, but suffering from legacy burden for backward
 compatibility with `HTTP/1.1`, they have gone not far.
