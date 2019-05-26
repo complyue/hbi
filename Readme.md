@@ -144,7 +144,9 @@ Service API Implementation:
 
 ```python
     async def SendFile(self, room_id: str, fn: str):
-        co = self.ho.co
+        co: HoCo = self.ho.co()
+        # transit the hosting conversation to `send` stage a.s.a.p.
+        await co.start_send()
 
         fpth = os.path.abspath(os.path.join("chat-server-files", room_id, fn))
         if not os.path.exists(fpth) or not os.path.isfile(fpth):
@@ -197,12 +199,10 @@ Service API Implementation:
 Consumer Usage:
 
 ```python
-    async def _download_file(self, fn):
-        lg = self.line_getter
-
-        room_dir = os.path.abspath(f"chat-client-files/{self.in_room}")
+    async def _download_file(self, room_id: str, fn: str):
+        room_dir = os.path.abspath(f"chat-client-files/{room_id}")
         if not os.path.isdir(room_dir):
-            self.line_getter.show(f"Making room dir [{room_dir}] ...")
+            print(f"Making room dir [{room_dir}] ...")
             os.makedirs(room_dir, exist_ok=True)
 
         async with self.po.co() as co:  # start a new posting conversation
@@ -210,74 +210,81 @@ Consumer Usage:
             # send out download request
             await co.send_code(
                 rf"""
-SendFile({self.in_room!r}, {fn!r})
+SendFile({room_id!r}, {fn!r})
 """
             )
 
-        # receive response AFTER the posting conversation closed,
-        # this is crucial for overall throughput.
-        fsz, msg = await co.recv_obj()
-        if fsz < 0:
-            lg.show(f"Server refused file downlaod: {msg}")
-            return
-        elif msg is not None:
-            lg.show(f"@@ Server: {msg}")
+            # transit the conversation to `recv` stage a.s.a.p.
+            await co.start_recv()
 
-        fpth = os.path.join(room_dir, fn)
+            fsz, msg = await co.recv_obj()
+            if fsz < 0:
+                print(f"Server refused file downlaod: {msg}")
+                return
 
-        with open(fpth, "wb") as f:
-            total_kb = int(math.ceil(fsz / 1024))
-            lg.show(f" Start downloading {total_kb} KB data ...")
+            if msg is not None:
+                print(f"@@ Server: {msg}")
 
-            # prepare to recv file data from beginning, calculate checksum by the way
-            chksum = 0
+            fpth = os.path.join(room_dir, fn)
 
-            def stream_file_data():  # a generator function is ideal for binary data streaming
-                nonlocal chksum  # this is needed outer side, write to that var
+            # no truncate in case another spammer is racing to upload the same file.
+            # concurrent reading and writing to a same file is wrong in most but this spamming case.
+            f = os.fdopen(os.open(fpth, os.O_RDWR | os.O_CREAT), "rb+")
+            try:
+                total_kb = int(math.ceil(fsz / 1024))
+                print(f" Start downloading {total_kb} KB data ...")
 
-                # receive 1 KB at most at a time
-                buf = bytearray(1024)
+                # prepare to recv file data from beginning, calculate checksum by the way
+                chksum = 0
 
-                bytes_remain = fsz
-                while bytes_remain > 0:
+                def stream_file_data():  # a generator function is ideal for binary data streaming
+                    nonlocal chksum  # this is needed outer side, write to that var
 
-                    if len(buf) > bytes_remain:
-                        buf = buf[:bytes_remain]
+                    # receive 1 KB at most at a time
+                    buf = bytearray(1024)
 
-                    yield buf  # yield it so as to be streamed from client
+                    bytes_remain = fsz
+                    while bytes_remain > 0:
 
-                    f.write(buf)  # write received data to file
+                        if len(buf) > bytes_remain:
+                            buf = buf[:bytes_remain]
 
-                    bytes_remain -= len(buf)
+                        yield buf  # yield it so as to be streamed from client
 
-                    chksum = crc32(buf, chksum)  # update chksum
+                        f.write(buf)  # write received data to file
 
-                    remain_kb = int(math.ceil(bytes_remain / 1024))
-                    lg.show(  # overwrite line above prompt
-                        f"\x1B[1A\r\x1B[0K {remain_kb:12d} of {total_kb:12d} KB remaining ..."
-                    )
+                        bytes_remain -= len(buf)
 
-                assert bytes_remain == 0, "?!"
+                        chksum = crc32(buf, chksum)  # update chksum
 
-                # overwrite line above prompt
-                lg.show(f"\x1B[1A\r\x1B[0K All {total_kb} KB received.")
+                        remain_kb = int(math.ceil(bytes_remain / 1024))
+                        print(  # overwrite line above prompt
+                            f"\x1B[1A\r\x1B[0K {remain_kb:12d} of {total_kb:12d} KB remaining ..."
+                        )
 
-            # receive data stream from server
-            start_time = time.monotonic()
-            await co.recv_data(stream_file_data())
+                    assert bytes_remain == 0, "?!"
 
-        peer_chksum = await co.recv_obj()
+                    # overwrite line above prompt
+                    print(f"\x1B[1A\r\x1B[0K All {total_kb} KB received.")
+
+                # receive data stream from server
+                start_time = time.monotonic()
+                await co.recv_data(stream_file_data())
+            finally:
+                f.close()
+
+            peer_chksum = await co.recv_obj()
+
         elapsed_seconds = time.monotonic() - start_time
 
-        # overwrite line above
-        lg.show(
+        print(  # overwrite line above
             f"\x1B[1A\r\x1B[0K All {total_kb} KB downloaded in {elapsed_seconds:0.2f} second(s)."
         )
         # validate chksum calculated at peer side as it had all data sent
         if peer_chksum != chksum:
-            lg.show(f"But checksum mismatch !?!")
+            print(f"But checksum mismatch !?!")
         else:
-            lg.show(
+            print(
                 rf"""
 @@ downloaded {chksum:x} [{fn}]
 """
