@@ -415,7 +415,7 @@ asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
 
 - Outut
 
-```shell
+```console
 cyue@cyuembpx:~$ python -m hbichat.cmd.hello.client
 Welcome to HBI world!
 Hello, Nick from 127.0.0.1:51676!
@@ -516,7 +516,7 @@ hello()
 
 - Output
 
-```shell
+```console
 cyue@cyuembpx:~$ go run github.com/complyue/hbichat/cmd/hello/client
 Welcome to HBI world!
 Hello, Nick from 127.0.0.1:51732!
