@@ -296,55 +296,47 @@ SendFile({room_id!r}, {fn!r})
 ### Mechanism
 
 An `HBI` communication channel (wire) works Peer-to-Peer, each peer has 2 endpoints:
-the `posting endpoint` and the `hosting endpoint`. A peer is said to be acting actively
-when doing sending works with its `posting endpoint`, and is conversely said to be
-acting passively when doing receiving (`landing`) works with its `hosting endpoint`.
+the `posting endpoint` and the `hosting endpoint`. At any time, either peer can start a
+`posting conversation` from its `posting endpoint` for active communication; and once the
+other peer sees an incoming conversation at its `hosting endpoint`, it triggers a
+`hosting conversation` for passive communication.
 
-At any time, either peer can initiate a `posting conversation` for active communication,
-in response to that, a `hosting conversation` will be triggered at the other peer, for
-passive communication.
+ A `posting conversation` is created by the application. It starts out in `send` stage, in
+ which state the application can send with it any number of textual **peer-script** packets,
+ optionally followed by binary data/stream; then the application transit it to `recv` stage,
+ in which state the **response** generated at peer site by _landing_ those scripts will be
+ received with it at the originating peer. In case of **fire-and-forget** style notification
+ sending, the application just closes the `posting conversation` after all sent out.
 
-Both posting and hosting conversations have 2 stages, the `send` and the `recv` stage,
-a posting conversation starts out in `send` stage, while a hosting conversation starts out
-in `recv` stage. The transition from initial stage to the other is controlled by application.
-And only corresponding type of operations are allowed in each type of stage, i.e.
+A `hosting conversation` is created by HBI, and automatically available to the application
+from the `hosting endpoint`. It starts out in `recv` stage, in which state the application
+can recveive with it a number of value objects and/or data/streams specified by API design.
+The application transits the `hosting conversation` to `send` stage if it quickly has the 
+response content to send back, or it can first transits the `hosting conversation` to `work`
+stage to fully release the underlying HBI wire, before some time is spent to prepare the 
+response (computation or coordination with other resources); then finally transits to
+`send` stage to send the response back. In case of **fire-and-forget** style communication,
+no reponse is needed and the `hosting conversation` is closed once full request body has
+been received with it.
 
-- In `send` stage:
-  - send operations allowed
-  - recv operations prohibited
-- In `recv` stage:
-  - recv operations allowed
-  - send operations prohibited
+There is a `hosting environment` attached to each `hosting endpoint`, the application
+exposes various artifacts to the `hosting environment`, meant to be scripted by the
+**peer-script** sent from the remote peer. This is why the whole mechanism called 
+_Hosting Based Interface_.
 
-Mixing of the 2 types of operation during either type of conversation is
-[deaklock](https://en.wikipedia.org/wiki/Deadlock) prone, in the context that underlying
-transport wire is shared among many conversations for overall throughput.
-
-A `posting conversation` **SHOULD** transit to `recv` stage as soon as possible, the transition
-is needed to release the underlying transport wire for other conversations to start sending.
-
-A _FIRE-AND-FORGET_ posting conversation is closed without stage transition and any `recv`
-operation, while in other cases the application transit a posting conversation to `recv`
-stage, then perform `recv` operations with it to get the response in the form of a series of
-value objects and/or data/stream, then finally close it.
-
-As the other peer sees inbound traffic about the conversation, it establishes a
-`hosting-conversation` to accommodate the `landing` of _peer-scripting-code_ received.
-
-`landing` is simply the execution of textual scripting code, with the chosen programming
-language / runtime, with the `hosting envrionment` as context. e.g.
+Hosted execution of **peer-script** is called **landing**, it is just interpeted running of
+textual scripting code, with the chosen programming language / runtime, with the
+`hosting envrionment` as context. e.g.
 [exec()](https://docs.python.org/3/library/functions.html#exec) is used with Python, and
 [Anko interpreter](https://github.com/mattn/anko "Anko's Github Home") is used with Golang.
 
-The `hosting environment` of one peer is openly accessible by the _peer-scripting-code_
-sent from the other peer, to the extent the former peer is willing of exposure.
+The `hosting environment` of one peer is openly accessible by **peer-script**
+from another peer, to the extent the hosting peer is willing of exposure.
 
-The _peer-scripting-code_ just executes as being `landed`, it scripts the hosting peer
-for desired impacts by the posting peer.
-
-    One extra optional responsibility of the _peer-scripting-code_ is that: if binary
-    data/stream follows, the priori sent code _MUST_ receive or streamline the data
-    properly, and bearing such responsibilities, it is then called `receiving-code`.
+The **peer-script** can carry data sending semantics as well as transactional semantics,
+its execution result can be received by the `hosting conversation` as a value object, or
+the following binary data/stream can be extracted from the wire and pushed to the 
+`hosting environment`.
 
 There normally occur subsequences as the hosting peer is being scripted to do anything,
 e.g. in case the posting peer is a software agent in behalf of its user to start a live
@@ -352,7 +344,7 @@ video casting, all the user's subscribers should be notified of the starting of 
 stream, and a streaming channel should be established to each ready subscriber, then the
 broadcaster should be notified how many subscribers will be watching.
 
-The _peer-scripting-code_ instructs about all those things as **WHAT** to do, and the
+The **peer-script** instructs about all those things as **WHAT** to do, and the
 `hosting envirnoment` should expose enough artifacts implementing **HOW** to do each of those.
 
 Theoretically every artifact exposed by the hosting environment is a **function**, which takes
@@ -380,11 +372,11 @@ carrying special semantics:
 
 The implementation of a **function** exposed by a `hosting environment`, normally (the exact
 case that `response` is expected) does leverage the `hosting conversation` to send another
-set of _peer-scripting-code_, optionally with binary data/stream (the `response`), back to
-the posting peer, for the subsequences be realized at the posting site.
+set of **peer-script** packets, optionally with binary data/stream (the `response`), back to
+the original peer, for the subsequences be realized at the initiating site.
 
-This set of _peer-scripting-code_ (plus data/stream if present), is `landed` (meaning
-received & processed) during the `after-posting stage` of the posting peer's original
+This set of **peer-script** packets (possibly followed by binary data/stream), is `landed`
+(meaning received & processed) during the `recv` stage of the original peer's
 `posting conversation`, as mentioned in earlier paragrah of this section.
 
 Additionally, the implementation can schedule more activities to happen later, and any
