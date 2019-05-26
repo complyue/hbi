@@ -371,7 +371,7 @@ class HoCo:
         except asyncio.CancelledError as exc:
             # capture the `err_reason` passed to `disconnect()`,
             # can be None for normal disconnection.
-            disc_reason = self.disc_reason
+            disc_reason = hbic.disc_reason
         except Exception as exc:
             disc_reason = traceback.print_exc()
 

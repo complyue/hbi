@@ -108,7 +108,9 @@ class _PoCoCtx:
         if not co._send_done_fut.done():
             await hbic._po_co_finish_send(co)
 
-        co._recv_done_fut.set_result(None)
+        recv_done_fut = co._recv_done_fut
+        if recv_done_fut is not None:
+            recv_done_fut.set_result(None)
 
     def __enter__(self):
         raise TypeError("you'd use `async with po.co():` instead of `with po.co():` ?")
@@ -144,7 +146,7 @@ class PoCo:
         loop = asyncio.get_running_loop()
         self._send_done_fut = loop.create_future()
         self._begin_acked_fut = loop.create_future()
-        self._recv_done_fut = loop.create_future()
+        self._recv_done_fut = None
         self._end_acked_fut = loop.create_future()
 
     @property
@@ -247,6 +249,8 @@ class PoCo:
 
         await hbic._po_co_finish_send(self)
 
+        self._recv_done_fut = asyncio.get_running_loop().create_future()
+
         # wait begin of ho co ack
         await self._begin_acked_fut
 
@@ -293,18 +297,18 @@ class PoCo:
 
         """
 
-        recv_fut = asyncio.get_running_loop().create_future()
-        await self._rdq.put((bufs, recv_fut))
+        if not self._send_done_fut.done():
+            raise asyncio.InvalidStateError("po co still in send stage")
 
-        disc_fut = self._hbic._disc_fut
-        done, pending = await asyncio.wait(
-            (disc_fut, recv_fut), return_when=asyncio.FIRST_COMPLETED
-        )
-        if recv_fut.done():
-            await recv_fut  # exception will be propagated if ever raised
-            return
-        # the done one must be disc_fut
-        raise disc_fut.exception() or asyncio.InvalidStateError(f"hbic disconnected")
+        if self._recv_done_fut is None:
+            raise asyncio.InvalidStateError("po co not in recv stage")
+
+        assert self._begin_acked_fut.done(), "po co response not started ?!"
+
+        hbic = self._hbic
+        assert self is hbic._recver, "po co not current recver ?!"
+
+        await hbic._recv_data(bufs)
 
     async def wait_completed(self):
         """

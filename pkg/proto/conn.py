@@ -594,7 +594,9 @@ HBIC {self.net_ident} disconnecting due to error:
                     # set po co as current receiver
                     self._recver = po_co
 
-                    await po_co._recv_done_fut
+                    recv_done_fut = po_co._recv_done_fut
+                    if recv_done_fut is not None:
+                        await recv_done_fut
 
                 elif "co_ack_end" == wire_dir:
 

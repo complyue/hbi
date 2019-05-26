@@ -273,11 +273,15 @@ func (co *PoCo) RecvStream(ds func() ([]byte, error)) error {
 //
 // Note this can only be called from the goroutine which created this conversation.
 func (co *PoCo) Close() error {
+
 	if co.sendDone != nil {
 		co.hbic.poCoFinishSend(co)
 	}
 
-	close(co.recvDone)
+	if co.recvDone != closedChan {
+		close(co.recvDone)
+		co.recvDone = closedChan
+	}
 
 	return nil
 }
