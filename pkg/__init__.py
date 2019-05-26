@@ -6,7 +6,7 @@ from .sock import *
 __all__ = [
 
     # exports from .aio
-    'CancellableQueue', 'handle_signals', 'SyncVar',
+    'dump_aio_task_stacks', 'CancellableQueue', 'handle_signals', 'SyncVar',
 
     # exports from .log
     'root_logger', 'get_logger',
