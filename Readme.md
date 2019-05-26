@@ -301,19 +301,19 @@ the `posting endpoint` and the `hosting endpoint`. At any time, either peer can 
 other peer sees an incoming conversation at its `hosting endpoint`, it triggers a
 `hosting conversation` for passive communication.
 
- A `posting conversation` is created by the application. It starts out in `send` stage, in
- which state the application can send with it any number of textual **peer-script** packets,
- optionally followed by binary data/stream; then the application transit it to `recv` stage,
- in which state the **response** generated at peer site by _landing_ those scripts will be
- received with it at the originating peer. In case of **fire-and-forget** style notification
- sending, the application just closes the `posting conversation` after all sent out.
+A `posting conversation` is created by the application. It starts out in `send` stage, in
+which state the application can send with it any number of textual **peer-script** packets,
+optionally followed by binary data/stream; then the application transit it to `recv` stage,
+in which state the **response** generated at peer site by _landing_ those scripts will be
+received with it at the originating peer. In case of **fire-and-forget** style notification
+sending, the application just closes the `posting conversation` after all sent out.
 
 A `hosting conversation` is created by HBI, and automatically available to the application
 from the `hosting endpoint`. It starts out in `recv` stage, in which state the application
 can recveive with it a number of value objects and/or data/streams specified by API design.
-The application transits the `hosting conversation` to `send` stage if it quickly has the 
+The application transits the `hosting conversation` to `send` stage if it quickly has the
 response content to send back, or it can first transits the `hosting conversation` to `work`
-stage to fully release the underlying HBI wire, before some time is spent to prepare the 
+stage to fully release the underlying HBI wire, before some time is spent to prepare the
 response (computation or coordination with other resources); then finally transits to
 `send` stage to send the response back. In case of **fire-and-forget** style communication,
 no reponse is needed and the `hosting conversation` is closed once full request body has
@@ -321,7 +321,7 @@ been received with it.
 
 There is a `hosting environment` attached to each `hosting endpoint`, the application
 exposes various artifacts to the `hosting environment`, meant to be scripted by the
-**peer-script** sent from the remote peer. This is why the whole mechanism called 
+**peer-script** sent from the remote peer. This is why the whole mechanism called
 _Hosting Based Interface_.
 
 Hosted execution of **peer-script** is called **landing**, it is just interpeted running of
@@ -335,7 +335,7 @@ from another peer, to the extent the hosting peer is willing of exposure.
 
 The **peer-script** can carry data sending semantics as well as transactional semantics,
 its execution result can be received by the `hosting conversation` as a value object, or
-the following binary data/stream can be extracted from the wire and pushed to the 
+the following binary data/stream can be extracted from the wire and pushed to the
 `hosting environment`.
 
 There normally occur subsequences as the hosting peer is being scripted to do anything,
