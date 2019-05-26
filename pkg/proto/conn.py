@@ -413,6 +413,7 @@ HBIC {self.net_ident} disconnecting due to error:
         co._send_done_fut = asyncio.get_event_loop().create_future()
 
         # wait current sender done
+        disc_fut = self._disc_fut
         sender = self._sender
         while sender is not None:
             done, pending = await asyncio.wait(
@@ -428,9 +429,8 @@ HBIC {self.net_ident} disconnecting due to error:
         await self._send_packet(co._co_seq, b"co_ack_begin")
 
     async def _new_po_co(self) -> PoCo:
-        disc_fut = self._disc_fut
-
         # wait current sender done
+        disc_fut = self._disc_fut
         sender = self._sender
         while sender is not None:
             done, pending = await asyncio.wait(
@@ -497,6 +497,7 @@ HBIC {self.net_ident} disconnecting due to error:
         # wait opportunity to send, and send an empty co_ack_begin/co_ack_end pair
 
         # wait current sender done
+        disc_fut = self._disc_fut
         sender = self._sender
         while sender is not None:
             done, pending = await asyncio.wait(
