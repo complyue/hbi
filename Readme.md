@@ -44,16 +44,21 @@ waited, there will be just too much waitings.
 
 ## The Solution
 
-**Hosting Based Interface** - HBI just implements asynchronous **Request-Response** pattern
-under the hood, building new services and applications with **HBI**, the classic
-**Request-Response** pattern goes naturally & very efficiently without imposing the dreadful
+**Hosting Based Interface** - HBI implements asynchronous **Request-Response** pattern
+under the hood. Building new services and applications with **HBI**, you can take full
+advantage of modern concurrency mechanisms like
+[Goroutines](https://tour.golang.org/concurrency/1) in Golang and
+[asyncio](https://docs.python.org/3/library/asyncio.html) in Python, to have the classic
+**Request-Response** pattern go naturally & very efficiently without imposing the dreadful
 [RTT](https://en.wikipedia.org/wiki/Round-trip_delay_time)
 and
 [HOL blocking](https://en.wikipedia.org/wiki/Head-of-line_blocking).
+Note: Over TCP connections, HBI eliminates HOL at _request/response_ level, to further
+eliminate HOL at transport level, [QUIC](https://en.wikipedia.org/wiki/QUIC) will be needed.
 
-A plus of **HBI** is _scripting_ capability granted to both **request** and **response**
-bodies, so both service authors and consumers can have greater flexibility in implementing
-diversified components speaking a same set of API/Protocol.
+**HBI** also eanbles **scripting** capability for both **request** and **response** bodies,
+so both service authors and consumers can have greater flexibility in implementing
+heterogeneous, diversified components speaking a same set of API/Protocol.
 
 ### In Action
 
