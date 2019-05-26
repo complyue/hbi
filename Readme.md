@@ -20,7 +20,7 @@ has helped benchmarks to reach
 [A Million requests per second](https://medium.freecodecamp.org/million-requests-per-second-with-python-95c137af319),
 but that's [not helping for realworld cases](https://devcentral.f5.com/s/articles/http-pipelining-a-security-risk-without-real-performance-benefits).
 
-Newer protocols like `HTTP/2` and `HTTP/3` (a.k.a 
+Newer protocols like `HTTP/2` and `HTTP/3` (a.k.a
 [HTTP-over-](https://www.zdnet.com/article/http-over-quic-to-be-renamed-http3/)
 [QUIC](https://en.wikipedia.org/wiki/QUIC)
 )
@@ -396,21 +396,18 @@ import asyncio, hbi
 
 
 async def say_hello_to(addr):
-
     po, ho = await hbi.dial_socket(addr, hbi.HostingEnv())
-
     async with po.co() as co:
-
         await co.send_code(
             f"""
 my_name = 'Nick'
 hello()
 """
         )
-
-    msg_back = await co.recv_obj()
-
+        await co.start_recv()
+        msg_back = await co.recv_obj()
     print(msg_back)
+    await ho.disconnect()
 
 
 asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
@@ -419,8 +416,10 @@ asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
 - Outut
 
 ```shell
-Hello, HBI world!
-Hello, Nick from 127.0.0.1:48784!
+cyue@cyuembpx:~$ python -m hbichat.cmd.hello.client
+Welcome to HBI world!
+Hello, Nick from 127.0.0.1:51676!
+cyue@cyuembpx:~$
 ```
 
 - Server
@@ -436,17 +435,18 @@ def he_factory() -> hbi.HostingEnv:
         "__hbi_init__",  # callback on wire connected
         lambda po, ho: po.notif(
             f"""
-print("Hello, HBI world!")
+print("Welcome to HBI world!")
 """
         ),
     )
 
-    he.expose_function(
-        "hello",  # reacting function name
-        lambda: he.ho.co.send_obj(
-            repr(f"Hello, {he.get('my_name')} from {he.po.remote_addr}!")
-        ),
-    )
+    async def hello():
+        co = he.ho.co()
+        await co.start_send()
+        consumer_name = he.get("my_name")
+        await co.send_obj(repr(f"Hello, {consumer_name} from {he.po.remote_addr}!"))
+
+    he.expose_function("hello", hello)
 
     return he
 
@@ -481,7 +481,6 @@ import (
 )
 
 func main() {
-
 	he := hbi.NewHostingEnv()
 
 	he.ExposeFunction("print", fmt.Println)
@@ -496,16 +495,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	func() {
-		defer co.Close()
+	defer co.Close()
 
-		if err = co.SendCode(`
+	if err = co.SendCode(`
 my_name = "Nick"
 hello()
 `); err != nil {
-			panic(err)
-		}
-	}()
+		panic(err)
+	}
+
+	co.StartRecv()
 
 	msgBack, err := co.RecvObj()
 	if err != nil {
@@ -518,8 +517,10 @@ hello()
 - Output
 
 ```shell
-Hello, HBI world!
-Hello, Nick from 127.0.0.1:48778!
+cyue@cyuembpx:~$ go run github.com/complyue/hbichat/cmd/hello/client
+Welcome to HBI world!
+Hello, Nick from 127.0.0.1:51732!
+cyue@cyuembpx:~$
 ```
 
 - Server
@@ -535,21 +536,25 @@ import (
 )
 
 func main() {
-
 	hbi.ServeTCP("localhost:3232", func() *hbi.HostingEnv {
 		he := hbi.NewHostingEnv()
 
 		he.ExposeFunction("__hbi_init__", // callback on wire connected
 			func(po *hbi.PostingEnd, ho *hbi.HostingEnd) {
 				po.Notif(`
-print("Hello, HBI world!")
+print("Welcome to HBI world!")
 `)
 			})
 
 		he.ExposeFunction("hello", func() {
-			if err := he.Ho().Co().SendObj(hbi.Repr(fmt.Sprintf(
+			co := he.Ho().Co()
+			if err := co.StartSend(); err != nil {
+				panic(err)
+			}
+			consumerName := he.Get("my_name")
+			if err := co.SendObj(hbi.Repr(fmt.Sprintf(
 				`Hello, %s from %s!`,
-				he.Get("my_name"), he.Po().RemoteAddr(),
+				consumerName, he.Po().RemoteAddr(),
 			))); err != nil {
 				panic(err)
 			}
@@ -558,7 +563,6 @@ print("Hello, HBI world!")
 	}, func(listener *net.TCPListener) {
 		fmt.Println("hello server listening:", listener.Addr())
 	})
-
 }
 ```
 
