@@ -125,19 +125,21 @@ Without relief from HOL blocking, solutions like
 You should see:
 
 - There's no explicit network manipulations, just send/recv using the converstion object:
+  - `co.start_send()` / `co.start_recv()`
   - `co.send_obj()` / `co.recv_obj()`
   - `co.send_data()` / `co.recv_data()`
-- Control info (i.e. request, accept/refuse msg, file size etc.) is straight forward
-- Binary data streaming is straight forward too, i.e. no excessive memory used to hold full
+- Control info (i.e. request, accept/refuse msg, file size etc.) comprise of just function arguments
+  and received value objects
+- Binary data streaming is straight forward, no excessive memory used to hold full
   file data, and the buffer size can be arbitrarily chosen at either side
-- The checksum of full data stream is calculated straight forward as well, no extra scan
+- The checksum of full data stream is calculated straight forward as well, no extra load or scan
 
 And you should know:
 
 - All network traffic is pipelined with a single tcp connection underlying
 - The underlying tcp connection is shared with other service calls
 - No service call will pend the tcp connection to block other calls, when it's not sending sth
-- So the tcp connection is always at its max throughput possible (with RTT eliminated entirely)
+- So the tcp connection is always at its max throughput potential (with neither RTT nor HOL blocking)
 - No sophiscated network protocol design & optimisation needed to achieve all above
 
 Service API Implementation:
