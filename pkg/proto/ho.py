@@ -144,37 +144,6 @@ class HoCo:
 
         await hbic._recv_data(bufs)
 
-    async def finish_recv(self):
-        """
-        finish_recv transits this hosting conversation from `recv` stage to `work` stage.
-
-        As soon as no further value object and data/stream is to be received with a hosting
-        conversation, it should leave `recv` stage to release the underlying HBI transport wire
-        for the next hosting conversation or response to local posting conversation to start off.
-
-        Explicit transition to `work` stage is only necessary when this hosting conversation
-        is supposed to send any back-script and/or data/stream back to the posting conversation
-        triggered it, and more time is needed for extensive computation/processing done by this
-        aio task or other resources.
-
-        A hosting conversion should be closed instead, if nothing is supposed to be sent back;
-        and should transit to `send` stage instead, if the back-sending can start quickly.
-
-        Note this can only be called from the dedicated hosting aio task, i.e. from functions
-        exposed to the hosting environment and called by the peer-scripting-code from the remote
-        posting conversation which triggered this ho co.
-
-        """
-
-        if self._recv_done_fut.done():
-            raise asyncio.InvalidStateError("ho co not in recv stage")
-
-        hbic = self._hbic
-        if self is not hbic._recver:
-            raise asyncio.InvalidStateError("ho co not current recver")
-
-        await hbic._ho_co_finish_recv(self)
-
     async def start_send(self):
         """
         start_send transits this hosting conversation from `recv` or `work` stage to `send` stage.

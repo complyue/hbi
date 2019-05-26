@@ -138,33 +138,6 @@ func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
 	return co.hbic.recvStream(ds)
 }
 
-// FinishRecv transits this hosting conversation from `recv` stage to `work` stage.
-//
-// As soon as no further value object and data/stream is to be received with a hosting
-// conversation, it should leave `recv` stage to release the underlying HBI transport wire
-// for the next hosting conversation or response to local posting conversation to start off.
-//
-// Explicit transition to `work` stage is only necessary when this hosting conversation
-// is supposed to send any back-script and/or data/stream back to the posting conversation
-// triggered it, and more time is needed for extensive computation/processing done by this
-// goroutine or other resources.
-//
-// A hosting conversion should be closed instead, if nothing is supposed to be sent back;
-// and should transit to `send` stage instead, if the back-sending can start quickly.
-//
-// Note this can only be called from the dedicated hosting goroutine, i.e. from functions
-// exposed to the hosting environment and called by the peer-scripting-code from the remote
-// posting conversation which triggered this ho co.
-func (co *HoCo) FinishRecv() error {
-	if co.recvDone == nil {
-		return errors.New("ho co not in recv stage")
-	}
-	if err := co.hbic.hoCoFinishRecv(co); err != nil {
-		return err
-	}
-	return nil
-}
-
 // StartSend transits this hosting conversation from `recv` or `work` stage to `send` stage.
 //
 // As soon as no further back-script and/or data/stream is to be sent with a hosting conversation,
@@ -178,12 +151,13 @@ func (co *HoCo) FinishRecv() error {
 // exposed to the hosting environment and called by the peer-scripting-code from the remote
 // posting conversation which triggered this ho co.
 func (co *HoCo) StartSend() error {
+	hbic := co.hbic
 	if co.recvDone != nil {
-		if err := co.FinishRecv(); err != nil {
+		if err := hbic.hoCoFinishRecv(co); err != nil {
 			return err
 		}
 	}
-	if err := co.hbic.hoCoStartSend(co); err != nil {
+	if err := hbic.hoCoStartSend(co); err != nil {
 		return err
 	}
 	return nil
@@ -269,12 +243,13 @@ func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 // exposed to the hosting environment and called by the peer-scripting-code from the remote
 // posting conversation which triggered this ho co.
 func (co *HoCo) Close() error {
+	hbic := co.hbic
 	if co.recvDone != nil {
-		if err := co.FinishRecv(); err != nil {
+		if err := hbic.hoCoFinishRecv(co); err != nil {
 			return err
 		}
 	}
-	if err := co.hbic.hoCoFinishSend(co); err != nil {
+	if err := hbic.hoCoFinishSend(co); err != nil {
 		return err
 	}
 	return nil
