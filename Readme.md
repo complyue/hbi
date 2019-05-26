@@ -387,9 +387,7 @@ through p2p connections.
 
 ### HBI over vanilla TCP
 
-- Python 3.7+
-
-  - Client
+- Python 3.7+ Client
 
 ```python
 import asyncio, hbi
@@ -413,7 +411,7 @@ hello()
 asyncio.run(say_hello_to({"host": "127.0.0.1", "port": 3232}))
 ```
 
-- Outut
+- Output
 
 ```console
 cyue@cyuembpx:~$ python -m hbichat.cmd.hello.client
@@ -422,7 +420,7 @@ Hello, Nick from 127.0.0.1:51676!
 cyue@cyuembpx:~$
 ```
 
-- Server
+- Python 3.7+ Server
 
 ```python
 import asyncio, hbi
@@ -467,9 +465,14 @@ except KeyboardInterrupt:
     pass
 ```
 
-- Go1
+- Output
 
-  - Client
+```console
+cyue@cyuembpx:~$ python -m hbichat.cmd.hello.server
+hello server listening: ('127.0.0.1', 3232)
+```
+
+- Go1 Client
 
 ```go
 package main
@@ -523,7 +526,7 @@ Hello, Nick from 127.0.0.1:51732!
 cyue@cyuembpx:~$
 ```
 
-- Server
+- Go1 Server
 
 ```go
 package main
@@ -564,6 +567,13 @@ print("Welcome to HBI world!")
 		fmt.Println("hello server listening:", listener.Addr())
 	})
 }
+```
+
+- Output
+
+```console
+cyue@cyuembpx:~$ go run github.com/complyue/hbichat/cmd/hello/server
+hello server listening: 127.0.0.1:3232
 ```
 
 - ES6
