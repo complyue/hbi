@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -56,10 +57,9 @@ func (ho *HostingEnd) Close() {
 	ho.hbic.Disconnect("", false)
 }
 
-// Done implements the ctx.context interface by returning a channel closed after the
-// underlying HBI connection is disconnected.
-func (ho *HostingEnd) Done() <-chan struct{} {
-	return ho.hbic.Done()
+// Context returns the conttext associated with the underlying HBI connection.
+func (ho *HostingEnd) Context() context.Context {
+	return ho.hbic
 }
 
 // Disconnected tells whether the underlying HBI connection has been disconnected.

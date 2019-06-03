@@ -1,6 +1,10 @@
 package proto
 
-import "github.com/complyue/hbi/pkg/errors"
+import (
+	"context"
+
+	"github.com/complyue/hbi/pkg/errors"
+)
 
 // PostingEnd is the application programming interface of a posting endpoint.
 type PostingEnd struct {
@@ -68,10 +72,9 @@ func (po *PostingEnd) Close() {
 	po.hbic.Disconnect("", false)
 }
 
-// Done implements the ctx.context interface by returning a channel closed after the
-// underlying HBI connection is disconnected.
-func (po *PostingEnd) Done() <-chan struct{} {
-	return po.hbic.Done()
+// Context returns the conttext associated with the underlying HBI connection.
+func (po *PostingEnd) Context() context.Context {
+	return po.hbic
 }
 
 // Disconnected tells whether the underlying HBI connection has been disconnected.
