@@ -7,15 +7,99 @@ from typing import *
 from .._details import *
 from ..log import *
 from ..proto import *
+from .sock import SocketWire
 
-__all__ = ["SocketWire"]
+__all__ = ["serve_tcp", "dial_tcp"]
 
 logger = get_logger(__name__)
 
 
-class SocketWire(asyncio.Protocol):
+async def serve_tcp(
+    addr: Union[dict, str],
+    he_factory: Callable[[], HostingEnv],
+    *,
+    wire_buf_high=20 * 1024 * 1024,
+    wire_buf_low=6 * 1024 * 1024,
+    net_opts: Optional[dict] = None,
+):
     """
-    SocketWire implements HBI wire protocol on asyncio socket transport.
+    serve_tcp takes a factory function (which will be asked to produce one hosting
+    env for each incoming HBI consumer connection), and returns `asyncio.Server` object
+    representing the listening tcp.
+
+    """
+
+    if isinstance(addr, str):
+        host, *rest = addr.rsplit(":", 1)
+        port = 3232
+        if len(rest) > 0:
+            port = int(rest[0])
+        addr = {"host": host, "port": port}
+
+    if net_opts is None:
+        net_opts = {}
+
+    loop = asyncio.get_running_loop()
+
+    if "family" not in net_opts:
+        # default to IPv4 only
+        net_opts["family"] = socket.AF_INET
+
+    server = await loop.create_server(
+        lambda: tcpWire(HBIC(he_factory()), wire_buf_high, wire_buf_low),
+        host=addr.get("host", "127.0.0.1"),
+        port=addr.get("port", 3232),
+        **net_opts,
+    )
+
+    return server
+
+
+async def dial_tcp(
+    addr: Union[dict, str],
+    he: HostingEnv,
+    *,
+    wire_buf_high=20 * 1024 * 1024,
+    wire_buf_low=6 * 1024 * 1024,
+    net_opts: Optional[dict] = None,
+) -> Tuple[PostingEnd, HostingEnd]:
+    """
+    dial_tcp takes a hosting env, establishes HBI connection to a service at `addr`,
+    returns the posting and hosting endpoints pair.
+
+    """
+
+    if isinstance(addr, str):
+        host, *rest = addr.rsplit(":", 1)
+        port = 3232
+        if len(rest) > 0:
+            port = int(rest[0])
+        addr = {"host": host, "port": port}
+
+    if net_opts is None:
+        net_opts = {}
+
+    loop = asyncio.get_running_loop()
+
+    if "family" not in net_opts:
+        # default to IPv4 only
+        net_opts["family"] = socket.AF_INET
+    transport, wire = await loop.create_connection(
+        lambda: tcpWire(HBIC(he), wire_buf_high, wire_buf_low),
+        host=addr.get("host", "127.0.0.1"),
+        port=addr.get("port", 3232),
+        **net_opts,
+    )
+
+    hbic = wire.hbic
+    await hbic.wait_connected()
+
+    return hbic.po, hbic.ho
+
+
+class tcpWire(asyncio.Protocol):
+    """
+    tcpWire implements HBI wire protocol on asyncio tcp transport.
 
     applications should never use this class directly.
 
@@ -139,73 +223,73 @@ class SocketWire(asyncio.Protocol):
     def remote_addr(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         peername = transport.get_extra_info("peername")
         if len(peername) in (2, 4):
             return ":".join(str(v) for v in peername)
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def remote_host(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         peername = transport.get_extra_info("peername")
         if len(peername) in (2, 4):
             return peername[0]
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def remote_port(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         peername = transport.get_extra_info("peername")
         if len(peername) in (2, 4):
             return peername[1]
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def local_host(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         sockname = transport.get_extra_info("sockname")
         if len(sockname) in (2, 4):
             return sockname[0]
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def local_addr(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         sockname = transport.get_extra_info("sockname")
         if len(sockname) in (2, 4):
             return ":".join(str(v) for v in sockname)
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def local_port(self) -> str:
         transport = self.transport
         if transport is None:
-            raise asyncio.InvalidStateError("Socket not wired!")
+            raise asyncio.InvalidStateError("tcp not wired!")
 
         sockname = transport.get_extra_info("sockname")
         if len(sockname) in (2, 4):
             return sockname[1]
         raise NotImplementedError(
-            "Socket transport other than tcp4/tcp6 not supported yet."
+            "tcp transport other than tcp4/tcp6 not supported yet."
         )
 
     def send_packet(

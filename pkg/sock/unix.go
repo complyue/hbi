@@ -8,22 +8,22 @@ import (
 	"github.com/golang/glog"
 )
 
-// ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
+// ServeUnix listens on the specified local address (host:port), serves each incoming connection with the
 // hosting environment created from the `heFactory` function.
 //
-// `cb` will be called with the created `*net.TCPListener`, it's handful to specify port as 0,
+// `cb` will be called with the created `*net.UnixListener`, it's handful to specify port as 0,
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) (err error) {
-	var raddr *net.TCPAddr
-	raddr, err = net.ResolveTCPAddr("tcp", addr)
+func ServeUnix(addr string, heFactory func() *proto.HostingEnv, cb func(*net.UnixListener)) (err error) {
+	var raddr *net.UnixAddr
+	raddr, err = net.ResolveUnixAddr("unix", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
 		return
 	}
-	var listener *net.TCPListener
-	listener, err = net.ListenTCP("tcp", raddr)
+	var listener *net.UnixListener
+	listener, err = net.ListenUnix("unix", raddr)
 	if err != nil {
 		glog.Errorf("listen error: %+v", errors.RichError(err))
 		return
@@ -33,8 +33,8 @@ func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPL
 	}
 
 	for {
-		var conn *net.TCPConn
-		conn, err = listener.AcceptTCP()
+		var conn *net.UnixConn
+		conn, err = listener.AcceptUnix()
 		if nil != err {
 			glog.Errorf("accept error: %+v", errors.RichError(err))
 			return
@@ -51,20 +51,20 @@ func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPL
 	}
 }
 
-// DialTCP connects to specified remote address (host:port), react with specified hosting environment.
+// DialUnix connects to specified remote address (host:port), react with specified hosting environment.
 //
 // The returned posting endpoint is used to create posting conversations to send code & data to remote
 // site for active communication.
 //
 // The returned hosting endpoint is used to obtain the current hosting conversation triggered by a
 // posting conversation from remote site for passive communication.
-func DialTCP(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
-	raddr, err := net.ResolveTCPAddr("tcp", addr)
+func DialUnix(addr string, he *proto.HostingEnv) (po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+	raddr, err := net.ResolveUnixAddr("Unix", addr)
 	if nil != err {
 		glog.Errorf("addr error: %+v", errors.RichError(err))
 		return
 	}
-	conn, err := net.DialTCP("tcp", nil, raddr)
+	conn, err := net.DialUnix("Unix", nil, raddr)
 	if nil != err {
 		glog.Errorf("conn error: %+v", errors.RichError(err))
 		return
