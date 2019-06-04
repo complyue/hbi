@@ -33,12 +33,14 @@ var (
 
 func init() {
 
-	flag.IntVar(&parallelismPerConsumer, "ppc", 2, "if greater than zero,"+
-		" serve each consumer by a dedicated worker subprocess with GOMAXPROCS=<`parallelism`>")
-	flag.IntVar(&servFD, "mpfd", 0, "(for multiprocessing worker subprocess only, not for human)"+
-		" serve the specified `fd` as a dedicated process")
-	flag.StringVar(&consumerIdent, "mpc", "?!?", "(for multiprocessing worker subprocess only, not for human)"+
-		" `mpc` specifies the consumer id served by this worker subprocess")
+	flag.IntVar(&parallelismPerConsumer, "ppc", 2,
+		"limit GOMAXPROCS=<`parallelism`> for each dedicated worker subprocess")
+	flag.IntVar(&servFD, "mpfd", 0,
+		`(for multiprocessing worker subprocess only, not for human)
+serve a consumer through the specified `+"`fd`"+` as a dedicated subprocess`)
+	flag.StringVar(&consumerIdent, "mpc", "?!?",
+		`(for multiprocessing worker subprocess only, not for human)
+`+"`mpc`"+` specifies the consumer identification served by this worker subprocess`)
 
 }
 
