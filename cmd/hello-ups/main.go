@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/complyue/hbi"
+	"github.com/complyue/hbi/pkg/mp"
 	"github.com/golang/glog"
 )
 
@@ -23,7 +24,7 @@ func init() {
 func main() {
 	flag.Parse()
 
-	hbi.UpstartTCP("localhost:3232", func() *hbi.HostingEnv {
+	mp.UpstartTCP("localhost:3232", func() *hbi.HostingEnv {
 		he := hbi.NewHostingEnv()
 
 		he.ExposeFunction("__hbi_init__", // callback on wire connected
