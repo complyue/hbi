@@ -18,6 +18,7 @@ package hbi
 import (
 	"net"
 
+	"github.com/complyue/hbi/pkg/mp"
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/complyue/hbi/pkg/sock"
 )
@@ -83,6 +84,14 @@ func ServeUnix(addr string, heFactory func() *HostingEnv, cb func(*net.UnixListe
 // posting conversation from remote site for passive communication.
 func DialUnix(addr string, he *HostingEnv) (po *PostingEnd, ho *HostingEnd, err error) {
 	return sock.DialUnix(addr, he)
+}
+
+// UpstartTCP listens on `addr` for incoming consumer connections over tcp,
+// a dedicated worker subprocess will be started for each new connection,
+// the consumer is served in the worker subprocess, with a hosting environment obtained
+// from `heFactory`.
+func UpstartTCP(addr string, heFactory func() *HostingEnv, cb func(*net.TCPListener)) (err error) {
+	return mp.UpstartTCP(addr, heFactory, cb)
 }
 
 // Repr converts a value object to its textual representation, that can be used to
