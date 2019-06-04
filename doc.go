@@ -64,6 +64,27 @@ func DialTCP(addr string, he *HostingEnv) (po *PostingEnd, ho *HostingEnd, err e
 	return sock.DialTCP(addr, he)
 }
 
+// ServeUnix listens on the specified file path (domain socket), serves each incoming connection with the
+// hosting environment created from the `heFactory` function.
+//
+// `cb` will be called with the created `*net.UnixListener`.
+//
+// This func won't return until the listener is closed.
+func ServeUnix(addr string, heFactory func() *HostingEnv, cb func(*net.UnixListener)) (err error) {
+	return sock.ServeUnix(addr, heFactory, cb)
+}
+
+// DialUnix connects to specified file path (domain socket), react with specified hosting environment.
+//
+// The returned posting endpoint is used to create posting conversations to send code & data to remote
+// site for active communication.
+//
+// The returned hosting endpoint is used to obtain the current hosting conversation triggered by a
+// posting conversation from remote site for passive communication.
+func DialUnix(addr string, he *HostingEnv) (po *PostingEnd, ho *HostingEnd, err error) {
+	return sock.DialUnix(addr, he)
+}
+
 // Repr converts a value object to its textual representation, that can be used to
 // reconstruct the object by Anko (https://github.com/mattn/anko), or an HBI HostingEnv
 // implemented in other programming languages / runtimes.

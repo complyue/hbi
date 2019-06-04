@@ -8,11 +8,10 @@ import (
 	"github.com/golang/glog"
 )
 
-// ServeUnix listens on the specified local address (host:port), serves each incoming connection with the
+// ServeUnix listens on the specified file path (domain socket), serves each incoming connection with the
 // hosting environment created from the `heFactory` function.
 //
-// `cb` will be called with the created `*net.UnixListener`, it's handful to specify port as 0,
-// and receive the actual port from the cb.
+// `cb` will be called with the created `*net.UnixListener`.
 //
 // This func won't return until the listener is closed.
 func ServeUnix(addr string, heFactory func() *proto.HostingEnv, cb func(*net.UnixListener)) (err error) {
@@ -51,7 +50,7 @@ func ServeUnix(addr string, heFactory func() *proto.HostingEnv, cb func(*net.Uni
 	}
 }
 
-// DialUnix connects to specified remote address (host:port), react with specified hosting environment.
+// DialUnix connects to specified file path (domain socket), react with specified hosting environment.
 //
 // The returned posting endpoint is used to create posting conversations to send code & data to remote
 // site for active communication.
