@@ -50,7 +50,6 @@ func (ups *tcpUpstarter) Listen() (err error) {
 
 	for {
 		var conn *net.TCPConn
-		var f *os.File
 
 		conn, err = listener.AcceptTCP()
 		if err != nil {
@@ -61,13 +60,7 @@ func (ups *tcpUpstarter) Listen() (err error) {
 		consumerIdent := fmt.Sprintf("%s<=>%s", conn.LocalAddr(), conn.RemoteAddr())
 		glog.V(1).Infof("New HBI upstart consumer connection accepted: %s", consumerIdent)
 
-		f, err = conn.File()
-		if err != nil {
-			glog.Errorf("socket to file error: %+v", errors.RichError(err))
-			return
-		}
-
-		upstartWorker(f, consumerIdent)
+		upstartWorker(conn, consumerIdent)
 	}
 }
 

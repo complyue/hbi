@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
@@ -88,25 +89,40 @@ func Upstart(upstarter Upstarter) error {
 	return nil
 }
 
-func upstartWorker(f *os.File, consumerIdent string) {
+type fileBased interface {
+	File() (*os.File, error)
+}
+
+func upstartWorker(conn net.Conn, consumerIdent string) {
+	defer conn.Close()
+
+	f, err := conn.(fileBased).File()
+	if err != nil {
+		glog.Errorf("socket to file error: %+v", errors.RichError(err))
+		return
+	}
 	defer f.Close()
 
-	fullArgs := append([]string{
+	cmd := exec.Command(mpExecutable, append([]string{
 		"-mpfd", "3",
 		"-mpc", consumerIdent,
-	}, mpCmdlArgs...)
-	cmd := exec.Command(mpExecutable, fullArgs...)
-	cmd.Stderr = os.Stderr // combine logs of all workers into listener
+	}, mpCmdlArgs...)...)
+
+	// logs of worker subprocess going into stderr should go into same stderr of listener process
+	cmd.Stderr = os.Stderr
+
+	// use fd=3 to pass the accepted socket to worker subprocess
 	cmd.ExtraFiles = []*os.File{f}
+
 	if parallelismPerConsumer > 0 {
+		// tho -ppc should have been passed along (in mpCmdlArgs), still set the env var here
 		cmd.Env = append(os.Environ(), fmt.Sprintf("GOMAXPROCS=%d", parallelismPerConsumer))
 	}
-	err := cmd.Start()
-	if err != nil {
+
+	if err = cmd.Start(); err != nil {
 		glog.Errorf("error spawning upstart worker subprocess: %+v", errors.RichError(err))
 		return
 	}
 
 	glog.V(1).Infof("Upstart worker subprocess %v started to serve %s", cmd.Process.Pid, consumerIdent)
-
 }
