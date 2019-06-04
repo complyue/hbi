@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/complyue/hbi"
-	"github.com/complyue/hbi/pkg/mp"
+	"github.com/complyue/hbi/mp"
 	"github.com/golang/glog"
 )
 
