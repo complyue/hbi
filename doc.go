@@ -22,6 +22,11 @@ import (
 	"github.com/complyue/hbi/pkg/sock"
 )
 
+// NewHostingEnv creates a new, empty hosting environment.
+func NewHostingEnv() *HostingEnv {
+	return proto.NewHostingEnv()
+}
+
 // HostingEnv is the container of HBI artifacts, including:
 //   * functions
 //   * object constructors (special functions taking n args, returning 1 object)
@@ -34,13 +39,19 @@ type HostingEnv = proto.HostingEnv
 // HostingEnd is the application programming interface of a hosting endpoint.
 type HostingEnd = proto.HostingEnd
 
+// HoCo is the passive, hosting conversation.
+//
+// A HoCo is triggered by a PoCo from peer's posting endpoint, it is automatically available to
+// application, obtained by calling HostingEnd.Co()
+type HoCo = proto.HoCo
+
 // PostingEnd is the application programming interface of a posting endpoint.
 type PostingEnd = proto.PostingEnd
 
-// NewHostingEnv creates a new, empty hosting environment.
-func NewHostingEnv() *HostingEnv {
-	return proto.NewHostingEnv()
-}
+// PoCo is the active, posting conversation.
+//
+// A PoCo is created from application by calling PostingEnd.NewCo()
+type PoCo = proto.PoCo
 
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
 // hosting environment created from the `heFactory` function.
