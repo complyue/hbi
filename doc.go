@@ -162,3 +162,27 @@ func DialUnix(addr string, he *HostingEnv) (po *PostingEnd, ho *HostingEnd, err 
 func Repr(val interface{}) string {
 	return proto.Repr(val)
 }
+
+type (
+	// LitIntType is the type of a literal int value from peer script
+	//
+	// this is decided by the underlying HBI interpreter for Go1, which is Anko
+	LitIntType = int64
+
+	// LitDecimalType is the type of a literal decimal value from peer script
+	//
+	// this is decided by the underlying HBI interpreter for Go1, which is Anko
+	LitDecimalType = float64
+
+	// LitListType is the type of a literal list (as called by Python, or array
+	// as called by JavaScript) value from peer script
+	//
+	// this is decided by the underlying HBI interpreter for Go1, which is Anko
+	LitListType = []interface{}
+
+	// LitDictType is the type of a literal dict (as called by Python, or object
+	// as called by JavaScript) value from peer script
+	//
+	// this is decided by the underlying HBI interpreter for Go1, which is Anko
+	LitDictType = map[interface{}]interface{}
+)
