@@ -144,16 +144,18 @@ class HoCo:
 
         await hbic._recv_data(bufs)
 
-    async def start_send(self):
+    async def finish_recv(self):
         """
-        start_send transits this hosting conversation from `recv` or `work` stage to `send` stage.
+        finish_recv transits this hosting conversation from `recv` to `work` stage.
+
+        As soon as all recv operations done, if some time-consuming work should be carried out to
+        prepare the response to be sent back, a hosting conversation should transit to `work` stage
+        by calling `finish_recv()`; a hosting conversion should be closed directly, if nothing is
+        supposed to be sent back.
 
         As soon as no further back-script and/or data/stream is to be sent with a hosting conversation,
         it should close to release the underlying HBI transport wire for the next posting conversation
         to start off or next send-ready hosting conversation to start sending.
-
-        After all recv operations done, a hosting conversion should be closed instead, if nothing is
-        supposed to be sent back.
 
         Note this can only be called from the dedicated hosting aio task, i.e. from functions
         exposed to the hosting environment and called by the peer-scripting-code from the remote
@@ -167,6 +169,30 @@ class HoCo:
         hbic = self._hbic
 
         await hbic._ho_co_finish_recv(self)
+
+    async def start_send(self):
+        """
+        start_send transits this hosting conversation from `recv` or `work` stage to `send` stage.
+
+        As soon as all recv operations done, if no time-consuming work needs to be carried out to
+        prepare the response to be sent back, a hosting conversation should transit to `send` stage
+        by calling `start_send()`; a hosting conversion should be closed directly, if nothing is
+        supposed to be sent back.
+
+        As soon as no further back-script and/or data/stream is to be sent with a hosting conversation,
+        it should close to release the underlying HBI transport wire for the next posting conversation
+        to start off or next send-ready hosting conversation to start sending.
+
+        Note this can only be called from the dedicated hosting aio task, i.e. from functions
+        exposed to the hosting environment and called by the peer-scripting-code from the remote
+        posting conversation which triggered this ho co.
+
+        """
+
+        if not self._recv_done_fut.done():
+            await hbic._ho_co_finish_recv(self)
+
+        hbic = self._hbic
 
         await hbic._ho_co_start_send(self)
 
