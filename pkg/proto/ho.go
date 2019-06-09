@@ -138,14 +138,36 @@ func (co *HoCo) RecvStream(ds func() ([]byte, error)) error {
 	return co.hbic.recvStream(ds)
 }
 
+// FinishRecv transits this hosting conversation from `recv` to `work` stage.
+//
+// As soon as all recv operations done, if some time-consuming work should be carried out to
+// prepare the response to be sent back, a hosting conversation should transit to `work` stage
+// by calling `FinishRecv()`; a hosting conversion should be closed directly, if nothing is
+// supposed to be sent back.
+//
+// Note this can only be called from the dedicated hosting goroutine, i.e. from functions
+// exposed to the hosting environment and called by the peer-scripting-code from the remote
+// posting conversation which triggered this ho co.
+func (co *HoCo) FinishRecv() error {
+	hbic := co.hbic
+	if co.recvDone != nil {
+		if err := hbic.hoCoFinishRecv(co); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // StartSend transits this hosting conversation from `recv` or `work` stage to `send` stage.
+//
+// As soon as all recv operations done, if no time-consuming work needs to be carried out to
+// prepare the response to be sent back, a hosting conversation should transit to `send` stage
+// by calling `StartSend()`; a hosting conversion should be closed directly, if nothing is
+// supposed to be sent back.
 //
 // As soon as no further back-script and/or data/stream is to be sent with a hosting conversation,
 // it should close to release the underlying HBI transport wire for the next posting conversation
 // to start off or next send-ready hosting conversation to start sending.
-//
-// After all recv operations done, a hosting conversion should be closed instead, if nothing is
-// supposed to be sent back.
 //
 // Note this can only be called from the dedicated hosting goroutine, i.e. from functions
 // exposed to the hosting environment and called by the peer-scripting-code from the remote
