@@ -736,7 +736,7 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 				err = errors.New(discReason)
 			}
 		} else if err != nil {
-			discReason = fmt.Sprintf("recv landing error: %+v", err)
+			discReason = fmt.Sprintf("%+v", err)
 		}
 
 		if len(discReason) > 0 {
@@ -784,8 +784,11 @@ func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
 
 		case "co_send":
 
-			discReason = "issued co_send before sending an object expected by prior receiving-code"
-			return
+			panic(errors.New("An object expected but peer want one back first."))
+
+		case "co_ack_end":
+
+			panic(errors.New("An object expected but not sent by peer conversation."))
 
 		default:
 
