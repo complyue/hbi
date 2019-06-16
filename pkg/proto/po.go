@@ -203,6 +203,7 @@ func (co *PoCo) StartRecv() error {
 		if err == nil {
 			err = errors.New("hbic disconnected")
 		}
+		return err
 	case <-co.beginAcked:
 		// normal case, be current recver now
 	}
