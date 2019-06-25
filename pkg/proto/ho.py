@@ -278,6 +278,10 @@ class HoCo:
 
         """
         hbic = self._hbic
+        if not hbic.is_connected():
+            raise asyncio.InvalidStateError(
+                f"hbic disconnected due to: {hbic.disc_reason!s}"
+            )
 
         if not self._recv_done_fut.done():
             await hbic._ho_co_finish_recv(self)
@@ -314,8 +318,9 @@ class HoCo:
                     if self._recv_done_fut.done():
                         # recv actively finished by the exposed reacting function
 
-                        # finish send anyway
-                        await hbic._ho_co_finish_send(self)
+                        # finish send if still connected
+                        if hbic.is_connected():
+                            await hbic._ho_co_finish_send(self)
 
                         # terminate this hosting thread anyway
                         return

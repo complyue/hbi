@@ -105,6 +105,11 @@ class _PoCoCtx:
         hbic = self._hbic
         co = self._co
 
+        if not hbic.is_connected():
+            raise asyncio.InvalidStateError(
+                f"hbic disconnected due to: {hbic.disc_reason!s}"
+            )
+
         if not co._send_done_fut.done():
             await hbic._po_co_finish_send(co)
 

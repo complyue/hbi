@@ -266,14 +266,20 @@ func (co *HoCo) SendStream(ds func() ([]byte, error)) error {
 // posting conversation which triggered this ho co.
 func (co *HoCo) Close() error {
 	hbic := co.hbic
+	if hbic.CancellableContext.Cancelled() {
+		return hbic.Err() // already disconnected
+	}
+
 	if co.recvDone != nil {
 		if err := hbic.hoCoFinishRecv(co); err != nil {
 			return err
 		}
 	}
+
 	if err := hbic.hoCoFinishSend(co); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -356,9 +362,11 @@ func (co *HoCo) hostingThread() {
 			if co.recvDone == nil {
 				// recv actively finished by the exposed reacting function
 
-				// finish send anyway
-				if err = hbic.hoCoFinishSend(co); err != nil {
-					return
+				// finish send if still connected
+				if !hbic.CancellableContext.Cancelled() {
+					if err = hbic.hoCoFinishSend(co); err != nil {
+						glog.Errorf("Failed finishing ho co send - %+v", err)
+					}
 				}
 
 				// terminate this hosting thread anyway
