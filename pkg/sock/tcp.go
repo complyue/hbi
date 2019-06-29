@@ -8,8 +8,8 @@ import (
 	"github.com/golang/glog"
 )
 
-// ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
-// hosting environment created from the `heFactory` function.
+// ServeTCP listens on the specified local address (host:port), serves each incoming connection with
+// a hosting environment produced by the `heFactory` function.
 //
 // `cb` will be called with the created `*net.TCPListener`, it's handful to specify port as 0,
 // and receive the actual port from the cb.
