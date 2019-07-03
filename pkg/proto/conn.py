@@ -613,6 +613,13 @@ HBIC {self.net_ident} disconnecting due to error:
 
                     self._recver = None
 
+                elif "co_recv" == wire_dir:
+
+                    disc_reason = (
+                        f"No active conversation to receive object:\n{payload!s}"
+                    )
+                    break
+
                 elif "err" == wire_dir:
                     # peer error
 

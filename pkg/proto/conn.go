@@ -698,6 +698,11 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 			hbic.recver = nil
 
+		case "co_recv":
+
+			discReason = fmt.Sprintf("No active conversation to receive object:\n%s", pkt.Payload)
+			return
+
 		case "err":
 
 			discReason = fmt.Sprintf("peer error: %s", pkt.Payload)
