@@ -58,9 +58,9 @@ class HostingEnd:
         return self._hbic.is_connected()
 
     async def disconnect(
-        self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
+        self, disc_reason: Optional[str] = None, try_send_peer_err: bool = True
     ):
-        await self._hbic.disconnect(err_reason, try_send_peer_err)
+        await self._hbic.disconnect(disc_reason, try_send_peer_err)
 
     async def wait_disconnected(self):
         await self._hbic.wait_disconnected()
@@ -369,7 +369,7 @@ class HoCo:
                     break
 
         except asyncio.CancelledError as exc:
-            # capture the `err_reason` passed to `disconnect()`,
+            # capture the `disc_reason` passed to `disconnect()`,
             # can be None for normal disconnection.
             disc_reason = hbic.disc_reason
         except Exception as exc:

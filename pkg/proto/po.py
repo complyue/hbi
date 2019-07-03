@@ -80,9 +80,9 @@ class PostingEnd:
         return self._hbic.is_connected()
 
     async def disconnect(
-        self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
+        self, disc_reason: Optional[str] = None, try_send_peer_err: bool = True
     ):
-        await self._hbic.disconnect(err_reason, try_send_peer_err)
+        await self._hbic.disconnect(disc_reason, try_send_peer_err)
 
     async def wait_disconnected(self):
         await self._hbic.wait_disconnected()

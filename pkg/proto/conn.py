@@ -91,21 +91,21 @@ class HBIC:
         assert wire is None or not wire.is_connected()
 
     async def disconnect(
-        self, err_reason: Optional[str] = None, try_send_peer_err: bool = True
+        self, disc_reason: Optional[str] = None, try_send_peer_err: bool = True
     ):
-        if err_reason is not None:
+        if disc_reason is not None:
             if self.disc_reason is None:
-                self.disc_reason = err_reason
+                self.disc_reason = disc_reason
                 logger.error(
                     rf"""
 HBIC {self.net_ident} disconnecting due to error:
-{err_reason}
+{disc_reason}
 """,
                     stack_info=True,
                 )
-            elif self.disc_reason != err_reason:
+            elif self.disc_reason != disc_reason:
                 logger.error(
-                    f"HBIC {self.net_ident!s} sees another reason to disconnect: {err_reason}",
+                    f"HBIC {self.net_ident!s} sees another reason to disconnect: {disc_reason}",
                     stack_info=True,
                 )
 
@@ -123,10 +123,10 @@ HBIC {self.net_ident} disconnecting due to error:
             cokt.cancel()
 
         try:
-            if err_reason is not None and try_send_peer_err:
+            if disc_reason is not None and try_send_peer_err:
                 if wire.is_connected():
                     try:
-                        wire.send_packet(str(err_reason).encode("utf-8"), b"err")
+                        wire.send_packet(str(disc_reason).encode("utf-8"), b"err")
                     except Exception:
                         logger.warning(
                             f"HBIC {self.net_ident} failed sending peer error",
@@ -134,14 +134,14 @@ HBIC {self.net_ident} disconnecting due to error:
                         )
                 else:
                     logger.warning(
-                        f"Not sending peer error as unwired:\n{err_reason!s}",
+                        f"Not sending peer error as unwired:\n{disc_reason!s}",
                         stack_info=True,
                     )
 
             if wire.is_connected():
                 wire.disconnect()
 
-            disc_fut.set_result(err_reason)
+            disc_fut.set_result(disc_reason)
         except Exception as exc:
             logger.warning(
                 "HBIC {self.net_ident} failed closing posting endpoint.", exc_info=True
@@ -256,8 +256,8 @@ HBIC {self.net_ident} disconnecting due to error:
             await self._send_ctrl.flowing()
             wire.send_packet(payload, wire_dir)
         except Exception:
-            err_reason = traceback.print_exc()
-            await self.disconnect(err_reason, False)
+            disc_reason = traceback.print_exc()
+            await self.disconnect(disc_reason, False)
             raise
 
     async def _send_buffer(self, buf):
@@ -266,8 +266,8 @@ HBIC {self.net_ident} disconnecting due to error:
             await self._send_ctrl.flowing()
             wire.send_data(buf)
         except Exception:
-            err_reason = traceback.print_exc()
-            await self.disconnect(err_reason, False)
+            disc_reason = traceback.print_exc()
+            await self.disconnect(disc_reason, False)
             raise
 
     async def _send_data(
@@ -628,7 +628,7 @@ HBIC {self.net_ident} disconnecting due to error:
                     break
 
         except asyncio.CancelledError as exc:
-            # capture the `err_reason` passed to `disconnect()`,
+            # capture the `disc_reason` passed to `disconnect()`,
             # can be None for normal disconnection.
             disc_reason = self.disc_reason
             disc_exc = exc
@@ -653,7 +653,7 @@ HBIC {self.net_ident} disconnecting due to error:
         if cleanup_magic is not None:
             try:
                 maybe_coro = cleanup_magic(
-                    po=self.po, ho=self.ho, err_reason=disc_reason
+                    po=self.po, ho=self.ho, disc_reason=disc_reason
                 )
                 if inspect.iscoroutine(maybe_coro):
                     await maybe_coro
