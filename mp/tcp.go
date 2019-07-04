@@ -16,14 +16,14 @@ import (
 type tcpUpstarter struct {
 	addr      string
 	heFactory func() *proto.HostingEnv
-	cb        func(*net.TCPListener)
+	cb        func(*net.TCPListener) error
 }
 
 // UpstartTCP listens on `addr` for incoming consumer connections over tcp,
 // a dedicated worker subprocess will be started for each new connection,
 // the consumer is served in the worker subprocess, with a hosting environment obtained
 // from `heFactory`.
-func UpstartTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) error {
+func UpstartTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener) error) error {
 	return Upstart(&tcpUpstarter{
 		addr:      addr,
 		heFactory: heFactory,
@@ -45,7 +45,9 @@ func (ups *tcpUpstarter) Listen() (err error) {
 		return
 	}
 	if ups.cb != nil {
-		ups.cb(listener)
+		if err = ups.cb(listener); err != nil {
+			return
+		}
 	}
 
 	for {

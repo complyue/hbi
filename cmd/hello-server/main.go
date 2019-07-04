@@ -46,8 +46,9 @@ print("Welcome to HBI world!")
 			}
 		})
 		return he
-	}, func(listener *net.TCPListener) {
+	}, func(listener *net.TCPListener) error {
 		fmt.Println("hello server listening:", listener.Addr())
+		return nil
 	})
 
 }

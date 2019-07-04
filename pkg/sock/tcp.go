@@ -15,7 +15,7 @@ import (
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPListener) error) (err error) {
 	var raddr *net.TCPAddr
 	raddr, err = net.ResolveTCPAddr("tcp", addr)
 	if nil != err {
@@ -29,7 +29,9 @@ func ServeTCP(addr string, heFactory func() *proto.HostingEnv, cb func(*net.TCPL
 		return
 	}
 	if cb != nil {
-		cb(listener)
+		if err = cb(listener); err != nil {
+			return
+		}
 	}
 
 	for {

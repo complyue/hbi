@@ -60,7 +60,7 @@ type PoCo = proto.PoCo
 // and receive the actual port from the cb.
 //
 // This func won't return until the listener is closed.
-func ServeTCP(addr string, heFactory func() *HostingEnv, cb func(*net.TCPListener)) (err error) {
+func ServeTCP(addr string, heFactory func() *HostingEnv, cb func(*net.TCPListener) error) (err error) {
 	return sock.ServeTCP(addr, heFactory, cb)
 }
 
