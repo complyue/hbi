@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 
 async def serve_tcp(
-    addr: Union[dict, str],
+    addr: Union[dict, str, Tuple[str, int]],
     he_factory: Callable[[], HostingEnv],
     *,
     wire_buf_high=20 * 1024 * 1024,
@@ -34,6 +34,11 @@ async def serve_tcp(
         port = 3232
         if len(rest) > 0:
             port = int(rest[0])
+        addr = {"host": host, "port": port}
+    elif isinstance(addr, tuple):
+        host, port = addr
+        if not port:  # translate 0 port to default 3232
+            port = 3232
         addr = {"host": host, "port": port}
 
     if net_opts is None:
@@ -56,7 +61,7 @@ async def serve_tcp(
 
 
 async def dial_tcp(
-    addr: Union[dict, str],
+    addr: Union[dict, str, Tuple[str, int]],
     he: HostingEnv,
     *,
     wire_buf_high=20 * 1024 * 1024,
@@ -74,6 +79,11 @@ async def dial_tcp(
         port = 3232
         if len(rest) > 0:
             port = int(rest[0])
+        addr = {"host": host, "port": port}
+    elif isinstance(addr, tuple):
+        host, port = addr
+        if not port:  # translate 0 port to default 3232
+            port = 3232
         addr = {"host": host, "port": port}
 
     if net_opts is None:
