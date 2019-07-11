@@ -159,8 +159,6 @@ HBIC {self.net_ident} disconnecting due to error:
     def wire_connected(self, wire):
         self.wire = wire
         self.net_ident = wire.net_ident()
-        self.po._remote_addr = wire.remote_addr()
-        self.ho._local_addr = wire.local_addr()
 
         self._send_ctrl.startup()
 

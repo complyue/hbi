@@ -16,7 +16,7 @@ class PostingEnd:
 
     """
 
-    __slots__ = ("_hbic", "_remote_addr")
+    __slots__ = ("_hbic",)
 
     def __init__(self, hbic):
         """
@@ -26,15 +26,21 @@ class PostingEnd:
 
         self._hbic = hbic
 
-        self._remote_addr = "<unwired>"
-
-    @property
-    def remote_addr(self):
-        return self._remote_addr
-
     @property
     def net_ident(self):
         return self._hbic.net_ident
+
+    @property
+    def remote_addr(self):
+        return self._hbic.wire.remote_addr()
+
+    @property
+    def remote_host(self):
+        return self._hbic.wire.remote_host()
+
+    @property
+    def remote_port(self):
+        return self._hbic.wire.remote_port()
 
     def co(self):
         """

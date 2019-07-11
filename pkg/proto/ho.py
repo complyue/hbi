@@ -18,7 +18,7 @@ class HostingEnd:
 
     """
 
-    __slots__ = ("_hbic", "_env", "_local_addr")
+    __slots__ = ("_hbic", "_env")
 
     def __init__(self, hbic, env):
         """
@@ -29,19 +29,25 @@ class HostingEnd:
         self._hbic: HBICI = hbic
         self._env: HostingEnv = env
 
-        self._local_addr = "<unwired>"
-
     @property
     def env(self):
         return self._env
 
     @property
-    def local_addr(self):
-        return self._local_addr
-
-    @property
     def net_ident(self):
         return self._hbic.net_ident
+
+    @property
+    def local_addr(self):
+        return self._hbic.wire.local_addr()
+
+    @property
+    def local_host(self):
+        return self._hbic.wire.local_host()
+
+    @property
+    def local_port(self):
+        return self._hbic.wire.local_port()
 
     def co(self) -> "HoCo":
         """
