@@ -8,9 +8,9 @@ __all__ = [
     'SocketWire',
 
     # exports from .tcp
-    'serve_tcp', 'dial_tcp',
+    'serve_tcp', 'dial_tcp', 'take_tcp',
 
     # exports from .unix
-    'serve_unix', 'dial_unix',
+    'serve_unix', 'dial_unix', 'take_unix',
 
 ]

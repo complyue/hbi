@@ -9,7 +9,7 @@ from ..log import *
 from ..proto import *
 from .sock import SocketWire
 
-__all__ = ["serve_unix", "dial_unix"]
+__all__ = ["serve_unix", "dial_unix", "take_unix"]
 
 logger = get_logger(__name__)
 
@@ -70,3 +70,33 @@ async def dial_unix(
     await hbic.wait_connected()
 
     return hbic.po, hbic.ho
+
+
+async def take_unix(
+    sock: socket.socket,
+    he: HostingEnv,
+    *,
+    wire_buf_high=20 * 1024 * 1024,
+    wire_buf_low=6 * 1024 * 1024,
+    net_opts: Optional[dict] = None,
+) -> Tuple[PostingEnd, HostingEnd]:
+    """
+    take_unix takes a hosting env, and takes over a connected socket with a
+    service for HBI connection, returns the posting and hosting endpoints pair.
+
+    """
+
+    if net_opts is None:
+        net_opts = {}
+
+    loop = asyncio.get_running_loop()
+
+    transport, wire = await loop.create_unix_connection(
+        lambda: SocketWire(HBIC(he), wire_buf_high, wire_buf_low), sock=sock, **net_opts
+    )
+
+    hbic = wire.hbic
+    await hbic.wait_connected()
+
+    return hbic.po, hbic.ho
+

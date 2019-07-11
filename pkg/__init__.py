@@ -15,6 +15,6 @@ __all__ = [
     'HBIC', 'HostingEnv', 'run_py', 'HostingEnd', 'HoCo', 'PostingEnd', 'PoCo', 'HBIWire',
 
     # exports from .sock
-    'SocketWire', 'serve_tcp', 'dial_tcp', 'serve_unix', 'dial_unix',
+    'SocketWire', 'serve_tcp', 'dial_tcp', 'take_tcp', 'serve_unix', 'dial_unix', 'take_unix',
 
 ]
