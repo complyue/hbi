@@ -3,12 +3,16 @@ Hosting Based Interface
 
 """
 from .interop import *
+from .numpy import *
 from .pkg import *
 
 __all__ = [
 
     # exports from .interop
     'JSONObj', 'JSONArray', 'JSONStr', 'expose_interop_values',
+
+    # exports from .numpy
+    'expose_numpy_helpers', 'send_ndarray', 'recv_ndarray',
 
     # exports from .pkg
     'dump_aio_task_stacks', 'CancellableQueue', 'handle_signals', 'SyncVar', 'root_logger', 'get_logger', 'HBIC',
