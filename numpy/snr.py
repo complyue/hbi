@@ -3,6 +3,8 @@ Send and Receive support for numpy arrays
 
 """
 
+from typing import *
+
 import numpy as np
 
 import hbi
@@ -28,4 +30,3 @@ async def recv_ndarray(co: Union["hbi.HoCo", "hbi.PoCo"]):
     if a.nbytes > 0:
         await co.recv_data(a)
     return a
-
