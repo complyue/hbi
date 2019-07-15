@@ -116,7 +116,7 @@ HBIC {self.net_ident} disconnecting due to error:
         disc_fut = self._disc_fut
         if disc_fut.done():  # already disconnected
             assert not wire.is_connected(), "disc_fut done but wire still connected ?!"
-            return
+            return await disc_fut  # propagate the exception if one occurred
 
         cokt = self._cok_task
         if cokt is not None and not cokt.done():
@@ -140,8 +140,6 @@ HBIC {self.net_ident} disconnecting due to error:
 
             if wire.is_connected():
                 wire.disconnect()
-
-            disc_fut.set_result(disc_reason)
         except Exception as exc:
             logger.warning(
                 "HBIC {self.net_ident} failed closing posting endpoint.", exc_info=True
@@ -149,7 +147,7 @@ HBIC {self.net_ident} disconnecting due to error:
             assert not disc_fut.done(), "?!"
             disc_fut.set_exception(exc)
 
-        assert disc_fut.done()
+        # wait for the wire to finish disconnection process
         await disc_fut  # propagate the exception if one occurred
 
     def is_landing(self):
@@ -201,19 +199,15 @@ HBIC {self.net_ident} disconnecting due to error:
 
         if exc is not None:
             logger.error(f"HBIC {self.net_ident} wire error: {exc}")
-
             disc_reason = f"wire error: {exc}"
             if self.disc_reason is None:
                 self.disc_reason = disc_reason
 
         else:
-            exc = asyncio.InvalidStateError(
-                f"HBIC {self.net_ident} wire forcefully disconnected."
-            )
-
             disc_reason = self.disc_reason
-            if disc_reason is None:
-                disc_reason = "wire forcefully disconnected"
+            exc = asyncio.InvalidStateError(
+                f"HBIC {self.net_ident} disconnected - {disc_reason}"
+            )
 
         conn_fut = self._conn_fut
         if not conn_fut.done():
