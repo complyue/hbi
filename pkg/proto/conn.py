@@ -646,6 +646,9 @@ HBIC {self.net_ident} disconnecting due to error:
                 if disc_exc is None:
                     disc_exc = asyncio.InvalidStateError("hbic disconnected")
                 co._end_acked_fut.set_exception(disc_exc)
+                # this future is not always awaited by user, retrive the exc here,
+                # let asyncio shutup about this case.
+                co._end_acked_fut.exception()
 
         # the co keeper task is terminating, disconnect if not already
         if not self._disc_fut.done():
