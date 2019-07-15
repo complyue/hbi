@@ -195,10 +195,10 @@ class HoCo:
 
         """
 
+        hbic = self._hbic
+
         if not self._recv_done_fut.done():
             await hbic._ho_co_finish_recv(self)
-
-        hbic = self._hbic
 
         await hbic._ho_co_start_send(self)
 
@@ -213,7 +213,7 @@ class HoCo:
 
         """
 
-        if self._send_done_fut.done():
+        if self._send_done_fut is None or self._send_done_fut.done():
             raise asyncio.InvalidStateError("ho co not in send stage")
 
         hbic = self._hbic
@@ -234,7 +234,7 @@ class HoCo:
 
         """
 
-        if self._send_done_fut.done():
+        if self._send_done_fut is None or self._send_done_fut.done():
             raise asyncio.InvalidStateError("ho co not in send stage")
 
         hbic = self._hbic
@@ -264,7 +264,7 @@ class HoCo:
 
         """
 
-        if self._send_done_fut.done():
+        if self._send_done_fut is None or self._send_done_fut.done():
             raise asyncio.InvalidStateError("ho co not in send stage")
 
         hbic = self._hbic
