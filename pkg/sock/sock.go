@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 
 	details "github.com/complyue/hbi/pkg/_details"
@@ -11,6 +12,36 @@ import (
 	"github.com/complyue/hbi/pkg/proto"
 	"github.com/golang/glog"
 )
+
+// TakeSocket takes a pre-connected socket (Unix or TCP), react with specified hosting environment.
+//
+// The returned posting endpoint is used to create posting conversations to send code & data to remote
+// site for active communication.
+//
+// The returned hosting endpoint is used to obtain the current hosting conversation triggered by a
+// posting conversation from remote site for passive communication.
+func TakeSocket(fd int, he *proto.HostingEnv) (
+	po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+	if !(fd > 2) {
+		panic(fmt.Sprintf("bad fd %v for socket", fd))
+	}
+
+	f := os.NewFile(uintptr(fd), "HBI-socket")
+	if f == nil {
+		panic(fmt.Sprintf("invalid fd %v for HBI socket", fd))
+	}
+
+	conn, err := net.FileConn(f)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	wire := NewSocketWire(conn)
+
+	po, ho, err = proto.NewConnection(wire, he)
+
+	return
+}
 
 // SocketWire is HBI wire protocol over a plain Sock socket.
 type SocketWire struct {

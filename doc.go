@@ -53,6 +53,18 @@ type PostingEnd = proto.PostingEnd
 // A PoCo is created from application by calling PostingEnd.NewCo()
 type PoCo = proto.PoCo
 
+// TakeSocket takes a pre-connected socket (Unix or TCP), react with specified hosting environment.
+//
+// The returned posting endpoint is used to create posting conversations to send code & data to remote
+// site for active communication.
+//
+// The returned hosting endpoint is used to obtain the current hosting conversation triggered by a
+// posting conversation from remote site for passive communication.
+func TakeSocket(fd int, he *proto.HostingEnv) (
+	po *proto.PostingEnd, ho *proto.HostingEnd, err error) {
+	return sock.TakeSocket(fd, he)
+}
+
 // ServeTCP listens on the specified local address (host:port), serves each incoming connection with the
 // hosting environment created from the `heFactory` function.
 //

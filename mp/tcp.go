@@ -6,10 +6,9 @@ import (
 	"net"
 	"os"
 
-	"github.com/complyue/hbi/pkg/sock"
-
 	"github.com/complyue/hbi/pkg/errors"
 	"github.com/complyue/hbi/pkg/proto"
+	"github.com/complyue/hbi/pkg/sock"
 	"github.com/golang/glog"
 )
 
@@ -67,30 +66,14 @@ func (ups *tcpUpstarter) Listen() (err error) {
 }
 
 func (ups *tcpUpstarter) ServeFD(fd int) (context.Context, error) {
-	if !(fd > 2) {
-		panic(fmt.Sprintf("bad fd %v for upstart", fd))
-	}
-
-	f := os.NewFile(uintptr(fd), "upstart-socket")
-	if f == nil {
-		panic(fmt.Sprintf("invalid fd %v for upstart", fd))
-	}
-
-	conn, err := net.FileConn(f)
-	if err != nil {
-		return nil, err
-	}
-
-	wire := sock.NewSocketWire(conn)
-	netIdent := wire.NetIdent()
-	glog.V(1).Infof("New HBI connection taken by upstart worker pid=%v: %s", os.Getpid(), netIdent)
-
 	he := ups.heFactory()
 
-	_, ho, err := proto.NewConnection(wire, he)
+	_, ho, err := sock.TakeSocket(fd, he)
 	if err != nil {
 		return nil, err
 	}
+
+	glog.V(1).Infof("New HBI connection taken by upstart worker pid=%v: %s", os.Getpid(), ho.NetIdent())
 
 	return ho.Context(), nil
 }
