@@ -82,8 +82,6 @@ class HBIC:
 
     async def wait_connected(self):
         await self._conn_fut
-        wire = self.wire
-        assert wire.is_connected()
 
     async def wait_disconnected(self):
         await self._disc_fut
