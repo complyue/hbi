@@ -16,7 +16,7 @@ __all__ = [
 
     # exports from .pkg
     'dump_aio_task_stacks', 'CancellableQueue', 'handle_signals', 'SyncVar', 'root_logger', 'get_logger', 'HBIC',
-    'HostingEnv', 'run_py', 'HostingEnd', 'HoCo', 'PostingEnd', 'PoCo', 'HBIWire', 'SocketWire', 'serve_tcp',
-    'dial_tcp', 'take_tcp', 'serve_unix', 'dial_unix', 'take_unix',
+    'HostingEnv', 'run_py', 'HostingEnd', 'HoCo', 'PostingEnd', 'PoCo', 'HBIWire', 'take_socket', 'SocketWire',
+    'serve_tcp', 'dial_tcp', 'serve_unix', 'dial_unix',
 
 ]

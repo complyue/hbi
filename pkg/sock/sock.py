@@ -8,9 +8,50 @@ from .._details import *
 from ..log import *
 from ..proto import *
 
-__all__ = ["SocketWire"]
+__all__ = ["take_socket", "SocketWire"]
 
 logger = get_logger(__name__)
+
+
+async def take_socket(
+    sock: socket.socket,
+    he: HostingEnv,
+    *,
+    wire_buf_high=20 * 1024 * 1024,
+    wire_buf_low=6 * 1024 * 1024,
+    net_opts: Optional[dict] = None,
+) -> Tuple[PostingEnd, HostingEnd]:
+    """
+    take_socket takes over a connected socket to a service, taks the hosting env for
+    HBI connection, returns the posting and hosting endpoints pair.
+
+    """
+
+    if net_opts is None:
+        net_opts = {}
+
+    loop = asyncio.get_running_loop()
+
+    if sock.family == socket.AF_UNIX:
+
+        transport, wire = await loop.create_unix_connection(
+            lambda: SocketWire(HBIC(he), wire_buf_high, wire_buf_low),
+            sock=sock,
+            **net_opts,
+        )
+
+    else:
+
+        transport, wire = await loop.create_connection(
+            lambda: SocketWire(HBIC(he), wire_buf_high, wire_buf_low),
+            sock=sock,
+            **net_opts,
+        )
+
+    hbic = wire.hbic
+    await hbic.wait_connected()
+
+    return hbic.po, hbic.ho
 
 
 class SocketWire(asyncio.Protocol):
