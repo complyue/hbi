@@ -49,6 +49,9 @@ class HostingEnd:
     def local_port(self):
         return self._hbic.wire.local_port()
 
+    def __repr__(self):
+        return f"Ho@{self.net_ident!s}"
+
     def co(self) -> "HoCo":
         """
         co returns the current hosting conversation in `recv` stage.
@@ -101,6 +104,9 @@ class HoCo:
 
         """
         return self._co_seq
+
+    def __repr__(self):
+        return f"HoCo#{self._co_seq!s}"
 
     async def recv_obj(self):
         """

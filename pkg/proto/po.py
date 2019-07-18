@@ -42,6 +42,9 @@ class PostingEnd:
     def remote_port(self):
         return self._hbic.wire.remote_port()
 
+    def __repr__(self):
+        return f"Po@{self.net_ident!s}"
+
     def co(self):
         """
         co creates a context manager, meant to be `async with`, for a fresh new posting conversation.
@@ -49,16 +52,21 @@ class PostingEnd:
         """
         return _PoCoCtx(self._hbic)
 
-    async def notif(self, code: str):
+    async def notif(self, code: str, wait_ack: bool = False):
         """
         notif is shorthand to (implicitly) create a posting conversation, which is closed
         immediately after `code` is sent with it.
 
+        if wait_ack is True, this blocks until acknowledgement for end of conversation has been
+        received from remote peer.
+
         """
 
         hbic = self._hbic
-        async with self.co():
+        async with self.co() as co:
             await hbic._send_packet(code)
+        if wait_ack:
+            await co.wait_completed()
 
     async def notif_data(
         self,
@@ -71,16 +79,22 @@ class PostingEnd:
             # normally with a generator function call
             Sequence[Union[bytes, bytearray, memoryview]],
         ],
+        wait_ack: bool = False,
     ):
         """
         notif_data is shorthand to (implicitly) create a posting conversation, which is closed
         immediately after `code` and `bufs` are sent with it.
 
+        if wait_ack is True, this blocks until acknowledgement for end of conversation has been
+        received from remote peer.
+
         """
         hbic = self._hbic
-        async with self.co():
+        async with self.co() as co:
             await hbic._send_packet(code)
             await hbic._send_data(bufs)
+        if wait_ack:
+            await co.wait_completed()
 
     def is_connected(self) -> bool:
         return self._hbic.is_connected()
@@ -171,6 +185,9 @@ class PoCo:
 
         """
         return self._co_seq
+
+    def __repr__(self):
+        return f"PoCo#{self._co_seq!s}"
 
     async def send_code(self, code: str):
         """

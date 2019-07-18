@@ -710,16 +710,20 @@ HBIC {self.net_ident} disconnecting due to error:
         raise asyncio.InvalidStateError("hbic disconnected")
 
     def stop_landing(self) -> bool:  # return whether to keep wire for sending
-        if self._recver is not None:
-            # trigger disconnection
-            asyncio.create_task(self.disconnect("Premature EOF", True))
-            return True
-
-        # disconnect wire after the sender finished sending
+        # disconnect wire after the sender (if any) finished sending
         async def disc_after_send_done():
-            while self._sender is not None:
-                await self._sender._send_done_fut
-            await self.disconnect(None, False)
+            disc_reason = None
+            try:
+
+                if self._recver is not None:
+                    disc_reason = f"Receiver {self._recver!r} not fulfilled"
+
+                while self._sender is not None:
+                    await self._sender._send_done_fut
+
+            except Exception:
+                disc_reason = traceback.format_exc()
+            await self.disconnect(disc_reason, True)
 
         asyncio.create_task(disc_after_send_done())
-        return True
+        return True  # keep wire for out sending

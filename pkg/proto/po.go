@@ -30,12 +30,16 @@ func (po *PostingEnd) NewCo() (*PoCo, error) {
 
 // Notif is shorthand to (implicitly) create a posting conversation, which is closed
 // immediately after `code` is sent with it.
-func (po *PostingEnd) Notif(code string) (err error) {
+//
+// the `completed` channel returned can be received from, to wait acknowledgement
+// for end of conversation has been received from remote peer.
+func (po *PostingEnd) Notif(code string) (completed <-chan struct{}, err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
 		return
 	}
 	defer co.Close()
+	completed = co.endAcked
 
 	if _, err = po, po.hbic.sendPacket(code, ""); err != nil {
 		return
@@ -45,12 +49,16 @@ func (po *PostingEnd) Notif(code string) (err error) {
 
 // NotifData is shorthand to (implicitly) create a posting conversation, which is closed
 // immediately after `code` and `d` are sent with it.
-func (po *PostingEnd) NotifData(code string, d []byte) (err error) {
+//
+// the `completed` channel returned can be received from, to wait acknowledgement
+// for end of conversation has been received from remote peer.
+func (po *PostingEnd) NotifData(code string, d []byte) (completed <-chan struct{}, err error) {
 	var co *PoCo
 	if co, err = po.hbic.newPoCo(); err != nil {
 		return
 	}
 	defer co.Close()
+	completed = co.endAcked
 
 	if err = po.hbic.sendPacket(code, ""); err != nil {
 		return
