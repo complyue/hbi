@@ -309,7 +309,7 @@ class HoCo:
 
                 pkt = await hbic._recv_packet()
                 if pkt is None:
-                    assert not wire.is_connected()
+                    assert not hbic.wire.is_connected()
                     break
                 # got a packet
                 payload, wire_dir = pkt
