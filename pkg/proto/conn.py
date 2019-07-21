@@ -418,7 +418,7 @@ HBIC {self.net_ident} disconnecting due to error:
         self._sender = co
         await self._send_packet(co._co_seq, b"co_ack_begin")
 
-    async def _new_po_co(self) -> PoCo:
+    async def _new_po_co(self, he) -> PoCo:
         # wait current sender done
         disc_fut = self._disc_fut
         sender = self._sender
@@ -442,7 +442,7 @@ HBIC {self.net_ident} disconnecting due to error:
                 break  # the new coSeq must not be occupied by a pending co
         self._next_co_seq = next_co_seq
 
-        co = PoCo(self, co_seq)
+        co = PoCo(he, self, co_seq)
         self._ppc[co_seq] = co
         self._sender = co
         await self._send_packet(co_seq, b"co_begin")
@@ -567,7 +567,12 @@ HBIC {self.net_ident} disconnecting due to error:
 
                     # back-script to a po co, just land it for side-effects
 
-                    landed = he.run_in_env(payload)
+                    co = self._recver
+                    eff_he = co.he
+                    if eff_he is None:
+                        eff_he = he
+
+                    landed = eff_he.run_in_env(payload)
                     if inspect.iscoroutine(landed):
                         landed = await landed
 
@@ -660,8 +665,9 @@ HBIC {self.net_ident} disconnecting due to error:
             except Exception:
                 logger.error(f"HBIC {self.net_ident!s} cleanup failed.", exc_info=True)
 
-    async def _recv_one_obj(self) -> object:
-        he = self.ho.env
+    async def _recv_one_obj(self, he=None) -> object:
+        if he is None:
+            he = self.ho.env
 
         disc_reason = None
         try_send_peer_err = True

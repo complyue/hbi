@@ -84,9 +84,10 @@ class HoCo:
 
     """
 
-    __slots__ = ("_hbic", "_co_seq", "_recv_done_fut", "_send_done_fut")
+    __slots__ = ("he", "_hbic", "_co_seq", "_recv_done_fut", "_send_done_fut")
 
     def __init__(self, hbic, co_seq):
+        self.he = None
         self._hbic = hbic
         self._co_seq = co_seq
 
@@ -126,7 +127,7 @@ class HoCo:
         if self is not hbic._recver:
             raise asyncio.InvalidStateError("ho co not current recver")
 
-        return await hbic._recv_one_obj()
+        return await hbic._recv_one_obj(self.he)
 
     async def recv_data(
         self,
@@ -323,7 +324,10 @@ class HoCo:
                 if "" == wire_dir:
                     # peer is pushing the textual code for side-effect of its landing
 
-                    landed = he.run_in_env(payload)
+                    eff_he = self.he
+                    if eff_he is None:
+                        eff_he = he
+                    landed = eff_he.run_in_env(payload)
                     if inspect.iscoroutine(landed):
                         landed = await landed
 
@@ -340,7 +344,10 @@ class HoCo:
                 elif "co_send" == wire_dir:
                     # peer is requesting this end to push landed result (in textual repr code) back
 
-                    landed = he.run_in_env(payload)
+                    eff_he = self.he
+                    if eff_he is None:
+                        eff_he = he
+                    landed = eff_he.run_in_env(payload)
                     if inspect.iscoroutine(landed):
                         landed = await landed
 

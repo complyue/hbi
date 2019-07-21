@@ -45,12 +45,12 @@ class PostingEnd:
     def __repr__(self):
         return f"Po@{self.net_ident!s}"
 
-    def co(self):
+    def co(self, he: Optional["HostingEnv"] = None):
         """
         co creates a context manager, meant to be `async with`, for a fresh new posting conversation.
 
         """
-        return _PoCoCtx(self._hbic)
+        return _PoCoCtx(he, self._hbic)
 
     async def notif(self, code: str, wait_ack: bool = False):
         """
@@ -109,14 +109,15 @@ class PostingEnd:
 
 
 class _PoCoCtx:
-    __slots__ = ("_hbic", "_co")
+    __slots__ = ("_he", "_hbic", "_co")
 
-    def __init__(self, hbic):
+    def __init__(self, he, hbic):
+        self._he = he
         self._hbic = hbic
         self._co = None
 
     async def __aenter__(self):
-        co = await self._hbic._new_po_co()
+        co = await self._hbic._new_po_co(self._he)
 
         self._co = co
         return co
@@ -156,6 +157,7 @@ class PoCo:
     """
 
     __slots__ = (
+        "he",
         "_hbic",
         "_co_seq",
         "_send_done_fut",
@@ -164,7 +166,8 @@ class PoCo:
         "_end_acked_fut",
     )
 
-    def __init__(self, hbic, co_seq: str):
+    def __init__(self, he, hbic, co_seq: str):
+        self.he = he
         self._hbic = hbic
         self._co_seq = co_seq
 
@@ -305,7 +308,7 @@ class PoCo:
         hbic = self._hbic
         assert self is hbic._recver, "po co not current recver ?!"
 
-        return await hbic._recv_one_obj()
+        return await hbic._recv_one_obj(self.he)
 
     async def recv_data(
         self,
