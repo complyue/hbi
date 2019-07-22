@@ -24,8 +24,8 @@ func (po *PostingEnd) NetIdent() string {
 }
 
 // NewCo starts a new posting conversation.
-func (po *PostingEnd) NewCo() (*PoCo, error) {
-	return po.hbic.newPoCo()
+func (po *PostingEnd) NewCo(he *HostingEnv) (*PoCo, error) {
+	return po.hbic.newPoCo(he)
 }
 
 // Notif is shorthand to (implicitly) create a posting conversation, which is closed
@@ -35,7 +35,7 @@ func (po *PostingEnd) NewCo() (*PoCo, error) {
 // for end of conversation has been received from remote peer.
 func (po *PostingEnd) Notif(code string) (completed <-chan struct{}, err error) {
 	var co *PoCo
-	if co, err = po.hbic.newPoCo(); err != nil {
+	if co, err = po.hbic.newPoCo(nil); err != nil {
 		return
 	}
 	defer co.Close()
@@ -54,7 +54,7 @@ func (po *PostingEnd) Notif(code string) (completed <-chan struct{}, err error) 
 // for end of conversation has been received from remote peer.
 func (po *PostingEnd) NotifData(code string, d []byte) (completed <-chan struct{}, err error) {
 	var co *PoCo
-	if co, err = po.hbic.newPoCo(); err != nil {
+	if co, err = po.hbic.newPoCo(nil); err != nil {
 		return
 	}
 	defer co.Close()
@@ -94,6 +94,9 @@ func (po *PostingEnd) Disconnected() bool {
 //
 // A PoCo is created from application by calling PostingEnd.NewCo()
 type PoCo struct {
+	// hosting env to use for this conversation, if not nil
+	HE *HostingEnv
+
 	hbic  *HBIC
 	coSeq string
 
@@ -241,7 +244,7 @@ func (co *PoCo) RecvObj() (obj interface{}, err error) {
 		panic(errors.New("po co not current recver ?!"))
 	}
 
-	return hbic.recvOneObj()
+	return hbic.recvOneObj(co.HE)
 }
 
 // RecvData receives the binary data/stream sent with the triggered hosting conversation at

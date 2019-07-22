@@ -72,6 +72,9 @@ func (ho *HostingEnd) Disconnected() bool {
 // A HoCo is triggered by a PoCo from peer's posting endpoint, it is automatically available to
 // application, obtained by calling HostingEnd.Co()
 type HoCo struct {
+	// hosting env to use for this conversation, if not nil
+	HE *HostingEnv
+
 	hbic  *HBIC
 	coSeq string
 
@@ -101,7 +104,7 @@ func (co *HoCo) RecvObj() (interface{}, error) {
 		panic(errors.New("ho co not current recver"))
 	}
 
-	return co.hbic.recvOneObj()
+	return co.hbic.recvOneObj(co.HE)
 }
 
 // RecvData receives the binary data/stream sent by calling PoCo.SendData() or PoCo.SendStream()
@@ -355,7 +358,12 @@ func (co *HoCo) hostingThread() {
 		case "":
 			// peer is pushing the textual code for side-effect of its landing
 
-			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
+			effEnv := env
+			if co.HE != nil {
+				effEnv = co.HE
+			}
+
+			if _, err = effEnv.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 
@@ -376,7 +384,12 @@ func (co *HoCo) hostingThread() {
 		case "co_send":
 			// peer is requesting this end to push landed result (in textual repr code) back
 
-			if result, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
+			effEnv := env
+			if co.HE != nil {
+				effEnv = co.HE
+			}
+
+			if result, err = effEnv.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 			if _, err = wire.SendPacket(Repr(result), "co_recv"); err != nil {

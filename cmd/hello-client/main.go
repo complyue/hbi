@@ -31,7 +31,7 @@ func main() {
 	}
 	defer ho.Close()
 
-	co, err := po.NewCo()
+	co, err := po.NewCo(nil)
 	if err != nil {
 		panic(err)
 	}

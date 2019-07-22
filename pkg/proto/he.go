@@ -31,6 +31,26 @@ func NewHostingEnv() *HostingEnv {
 	return he
 }
 
+// Augment creates a new hosting environment with the same set of exposed artifacts,
+// optionally having some of the artifacts overridden, and some extra artifacts
+// available.
+//
+// todo consider spliting overrides and extras as 2 separate args, validate them
+// against exposed named list.
+func (he *HostingEnv) Augment(overridesAndExtras map[string]interface{}) *HostingEnv {
+	de := &HostingEnv{
+		ve: he.ve.Copy(),
+		po: he.po, ho: he.ho,
+		exposure: he.exposure,
+	}
+	for name, val := range overridesAndExtras {
+		if err := de.ve.Define(name, val); err != nil {
+			panic(errors.RichError(err))
+		}
+	}
+	return de
+}
+
 // AnkoEnv returns the underlying Anko (https://github.com/mattn/anko) env.
 func (he *HostingEnv) AnkoEnv() *vm.Env {
 	return he.ve

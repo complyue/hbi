@@ -229,7 +229,7 @@ func (hbic *HBIC) hoCoStartSend(co *HoCo) error {
 	return nil
 }
 
-func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
+func (hbic *HBIC) newPoCo(he *HostingEnv) (co *PoCo, err error) {
 	hbic.sendMutex.Lock()
 	defer hbic.sendMutex.Unlock()
 
@@ -290,6 +290,7 @@ func (hbic *HBIC) newPoCo() (co *PoCo, err error) {
 	}
 
 	co = &PoCo{
+		HE:   he,
 		hbic: hbic, coSeq: coSeq,
 		sendDone:   make(chan struct{}),
 		recvDone:   make(chan struct{}),
@@ -648,7 +649,19 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 
 			// back-script to a po co, just land it for side-effects
 
-			if _, err = env.RunInEnv(hbic, pkt.Payload); err != nil {
+			effEnv := env
+			switch co := hbic.recver.(type) {
+			case *HoCo:
+				if co.HE != nil {
+					effEnv = co.HE
+				}
+			case *PoCo:
+				if co.HE != nil {
+					effEnv = co.HE
+				}
+			}
+
+			if _, err = effEnv.RunInEnv(hbic, pkt.Payload); err != nil {
 				return
 			}
 
@@ -718,10 +731,12 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 	}
 }
 
-func (hbic *HBIC) recvOneObj() (obj interface{}, err error) {
+func (hbic *HBIC) recvOneObj(env *HostingEnv) (obj interface{}, err error) {
+	if env == nil {
+		env = hbic.ho.env
+	}
 	var (
 		wire = hbic.wire
-		env  = hbic.ho.env
 
 		pkt *Packet
 
