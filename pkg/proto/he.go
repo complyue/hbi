@@ -38,17 +38,17 @@ func NewHostingEnv() *HostingEnv {
 // todo consider spliting overrides and extras as 2 separate args, validate them
 // against exposed named list.
 func (he *HostingEnv) Augment(overridesAndExtras map[string]interface{}) *HostingEnv {
-	de := &HostingEnv{
+	ae := &HostingEnv{
 		ve: he.ve.Copy(),
 		po: he.po, ho: he.ho,
 		exposure: he.exposure,
 	}
 	for name, val := range overridesAndExtras {
-		if err := de.ve.Define(name, val); err != nil {
+		if err := ae.ve.Define(name, val); err != nil {
 			panic(errors.RichError(err))
 		}
 	}
-	return de
+	return ae
 }
 
 // AnkoEnv returns the underlying Anko (https://github.com/mattn/anko) env.

@@ -31,6 +31,23 @@ class HostingEnv:
         self._po = None
         self._ho = None
 
+    def augment(self, overrides_and_extras: Dict[str, object]) -> "HostingEnv":
+        """
+        Augment creates a new hosting environment with the same set of exposed artifacts,
+        optionally having some of the artifacts overridden, and some extra artifacts
+        available.
+
+        todo consider spliting overrides and extras as 2 separate args, validate them
+        against exposed named list.
+        """
+
+        ae = __class__.__new__(__class__)
+        ae._globals = {**self._globals, **overrides_and_extras}
+        ae._locals = ae._globals if self._locals is self._globals else None
+        ae._exposed_names = [*self._exposed_names]
+        ae._po = self._po
+        ae._ho = self._ho
+
     @property
     def po(self) -> "PostingEnd":
         return self._po
