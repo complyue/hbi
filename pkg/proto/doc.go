@@ -17,4 +17,4 @@ type InitMagicFunction = func(po *PostingEnd, ho *HostingEnd)
 //
 // note: this interface should really be defined in `he` package, but that'll
 // create cyclic imports between `proto` and `he`.
-type CleanupMagicFunction = func(discReason string)
+type CleanupMagicFunction = func(po *PostingEnd, ho *HostingEnd, discReason string)

@@ -523,7 +523,7 @@ func (hbic *HBIC) coKeeper(initDone chan<- error) {
 					}
 				}()
 
-				cleanupFunc(discReason)
+				cleanupFunc(hbic.po, hbic.ho, discReason)
 			}()
 		}
 	}()
