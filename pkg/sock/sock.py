@@ -311,10 +311,16 @@ class SocketWire(asyncio.Protocol):
                     if ple_pos <= 0:
                         raise RuntimeError(f"No packet length in header: [{header_pl}]")
                     pack_len = int(header_pl[1:ple_pos])
-                    self._wire_dir = header_pl[ple_pos + 1 :].decode("utf-8")
+                    wire_dir = header_pl[ple_pos + 1 :].decode("utf-8")
                     self._hdr_got = 0
-                    self._bdy_buf = bytearray(pack_len)
                     self._bdy_got = 0
+                    if pack_len > 0:
+                        self._wire_dir = wire_dir
+                        self._bdy_buf = bytearray(pack_len)
+                    else:  # special case - zero length packet
+                        self._wire_dir = None
+                        self._bdy_buf = None
+                        return b"", wire_dir
                 else:
                     # packet body not fully received yet
                     needs = len(self._bdy_buf) - self._bdy_got
