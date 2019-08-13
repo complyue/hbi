@@ -639,6 +639,14 @@ HBIC {self.net_ident} disconnecting due to error:
             disc_exc = exc
 
         for co_seq, co in ppc.items():
+            if not co._begin_acked_fut.done():
+                if disc_exc is None:
+                    disc_exc = asyncio.InvalidStateError("hbic disconnected")
+                co._begin_acked_fut.set_exception(disc_exc)
+                # this future is not always awaited by user, retrive the exc here,
+                # let asyncio shutup about this case.
+                co._begin_acked_fut.exception()
+
             if not co._end_acked_fut.done():
                 if disc_exc is None:
                     disc_exc = asyncio.InvalidStateError("hbic disconnected")
