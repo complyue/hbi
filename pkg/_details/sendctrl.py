@@ -8,9 +8,12 @@ class SendCtrl:
     """
     """
 
+    __slots__ = "_flowing", "_waiters", "_sending"
+
     def __init__(self):
         self._flowing = True
         self._waiters = deque()
+        self._sending = False
 
     def qlen(self):
         return len(self._waiters)
@@ -19,8 +22,10 @@ class SendCtrl:
         if self._waiters:
             raise Exception("Unclean startup", {"waiters": self._waiters})
         self._flowing = True
+        self._sending = True
 
     def shutdown(self, exc=None):
+        self._sending = False
         self._flowing = False
         waiters = self._waiters
         self._waiters = deque()
@@ -36,12 +41,15 @@ class SendCtrl:
         awaitable for this ctrl object to be in `flowing` state.
         """
 
+        if not self._sending:
+            raise asyncio.InvalidStateError("not in sending state")
+
         # is in flowing state, return fast
         if self._flowing:
             return
 
         # in non-flowing state, await unleash notification
-        fut = asyncio.get_running_loop().create_future()
+        fut = asyncio.get_sending_loop().create_future()
         self._waiters.append(fut)
         try:
             await fut
@@ -83,5 +91,5 @@ class SendCtrl:
             # as this future's awaiter will send more data in next tick, and it'll run before next _unleash_one()
             # here scheduled after the set_result() call, it's fairly possible `restrain` has been called then.
             # python default loop and uvloop is confirmed working this way
-            asyncio.get_running_loop().call_soon(self._unleash_one)
+            asyncio.get_sending_loop().call_soon(self._unleash_one)
             return
