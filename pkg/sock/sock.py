@@ -142,12 +142,6 @@ class SocketWire(asyncio.Protocol):
         return self.hbic.stop_landing()
 
     def connection_lost(self, exc):
-        if isinstance(exc, (ConnectionResetError, BrokenPipeError)):
-            # we keep getting these errors if peer closes the socket without shutdown
-            # it first, HBI in Go1 has been doing explicit shutdown before close,
-            # yet no know-how in Python with asyncio.
-            # TODO figure out how this can be, and better handling it than just ignore
-            exc = None
         self.hbic.wire_disconnected(self, exc)
 
     def pause_writing(self):
@@ -168,6 +162,7 @@ class SocketWire(asyncio.Protocol):
                 f"Repeating disconnection of {self.net_ident()!s}", exc_info=True
             )
         else:
+            self.transport.write_eof()
             self.transport.close()
 
     def net_ident(self) -> str:
